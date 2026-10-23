@@ -21,6 +21,11 @@ interface Store {
   // A short-lived lock: true for exactly one caller until it expires or is released.
   claim(key: string, ttlSeconds: number): Promise<boolean>;
   release(key: string): Promise<void>;
+  // Adds one to a counter that disappears after ttlSeconds; returns the new count.
+  count(key: string, ttlSeconds: number): Promise<number>;
+  // Small JSON values that aren't rooms or players (e.g. the pair bank).
+  getJson<T>(key: string): Promise<T | null>;
+  setJson(key: string, value: unknown): Promise<void>;
 }
 
 const TTL_SECONDS = 60 * 60 * 24 * 7; // rooms expire after a week in Redis
@@ -65,6 +70,18 @@ function redisStore(url: string, token: string): Store {
     },
     async release(key) {
       await cmd("DEL", `lock:${key}`);
+    },
+    async count(key, ttlSeconds) {
+      const n = Number(await cmd("INCR", `count:${key}`));
+      if (n === 1) await cmd("EXPIRE", `count:${key}`, ttlSeconds);
+      return n;
+    },
+    async getJson(key) {
+      const raw = await cmd("GET", `json:${key}`);
+      return raw ? JSON.parse(raw) : null;
+    },
+    async setJson(key, value) {
+      await cmd("SET", `json:${key}`, JSON.stringify(value));
     },
   };
 }
@@ -119,8 +136,21 @@ function fileStore(root: string): Store {
     async release(key) {
       await fs.unlink(path.join(root, "_locks", `${safe(key)}.lock`)).catch(() => {});
     },
+    async count(key, ttlSeconds) {
+      // Local dev is a single process, so memory is enough.
+      const now = Date.now();
+      const hit = counters.get(key);
+      const entry = hit && hit.expires > now ? hit : { n: 0, expires: now + ttlSeconds * 1000 };
+      entry.n++;
+      counters.set(key, entry);
+      return entry.n;
+    },
+    getJson: (key) => readJson(path.join(root, "_json", `${safe(key)}.json`)),
+    setJson: (key, value) => writeJson(path.join(root, "_json", `${safe(key)}.json`), value),
   };
 }
+
+const counters = new Map<string, { n: number; expires: number }>();
 
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
 const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
@@ -148,6 +178,9 @@ function unconfiguredStore(): Store {
     listPlayers: fail,
     claim: fail,
     release: fail,
+    count: fail,
+    getJson: fail,
+    setJson: fail,
   };
 }
 

@@ -38,6 +38,25 @@ fails with "Room storage isn't set up on this deployment".
    previews use it; it defaults to `https://wikigame-indol.vercel.app`.
 4. Optional: set `WIKI_USER_AGENT` (it must include a contact URL or email: Wikimedia limits clients
    without one to 10 requests/minute, versus 200 with one).
+5. Set `CRON_SECRET` to any long random string (Settings → Environment Variables). Vercel sends it
+   to the daily cron job below, and the job refuses requests without it.
+6. Optional: set `WIKI_ORIGIN` to play on another language edition (e.g. `https://fr.wikipedia.org`).
+   The curated page lists are English, so other editions mostly suit typed-in pages.
+
+### Staying under Wikipedia's limits
+
+Wikipedia allows 200 requests a minute per app. The game keeps well below that:
+
+- **Pair bank:** rooms and rounds take their start/target pair from a bank of pre-verified pairs
+  stored in Redis (40 Easy, 40 Normal, 60 Hard), so creating a game normally makes no Wikipedia
+  requests. A daily cron job (`vercel.json` → `/api/cron/refill-bank`, 05:00 UTC) tops it up, and
+  creating a room tops it up a little in the background when it's low. Pairs expire after a week.
+  To fill it right after the first deploy, run the job once from the Cron Jobs tab in the dashboard.
+- **Caching:** articles, link lists, page summaries and title lookups are cached for days in a cache
+  shared by all servers (`'use cache: remote'`), and article HTML is also cached by Vercel's CDN.
+- **Fetching:** every request has an 8 s timeout, is retried with backoff on timeouts, network
+  errors, 429 and 5xx, and counts against a per-minute budget shared by all servers via Redis.
+  A 429 pauses that server's requests until Wikipedia's `Retry-After`.
 
 Share links always point at the public site, even when opened from a preview deployment, because
 friends usually can't open preview URLs. Locally they use your own address (e.g. `localhost:3000`),

@@ -1,6 +1,8 @@
 // Server-only: creating rooms, and chaining rounds so a group can keep playing.
 
-import { isOutOfTime, makeRoomCode, type Difficulty, type Player, type Room } from "./game";
+import { after } from "next/server";
+import { isOutOfTime, makeRoomCode, type Difficulty, type PageInfo, type Player, type Room } from "./game";
+import { BANK_TARGET, bankSize, refillBank, takeFromBank } from "./bank";
 import { scoreRound, standings, winners, type RoundScore, type Standing } from "./scoring";
 import { store } from "./store";
 import { generatePair, measure } from "./distance";
@@ -32,12 +34,21 @@ export async function createRoom(input: NewRoom): Promise<Room> {
 
   let start: string | null, end: string | null;
   let par: Room["par"] = null;
+  let infos: [PageInfo, PageInfo] | null = null;
   let usedBefore = input.avoid ?? [];
   if (!startInput && !endInput) {
-    const generated = await generatePair(difficulty, usedBefore);
-    if (!generated) throw new RoomInputError("Couldn't find a fitting pair of pages in time, try again");
-    ({ start, end, par } = generated.pair);
-    if (generated.reset) usedBefore = []; // every page has had a turn; start the list over
+    // Usually straight from the bank of pre-verified pairs: no Wikipedia requests.
+    const banked = await takeFromBank(difficulty, usedBefore).catch(() => null);
+    if (banked) {
+      ({ start, end, par } = banked);
+      infos = [banked.startInfo, banked.endInfo];
+    } else {
+      const generated = await generatePair(difficulty, usedBefore);
+      if (!generated) throw new RoomInputError("Couldn't find a fitting pair of pages in time, try again");
+      ({ start, end, par } = generated.pair);
+      if (generated.reset) usedBefore = []; // every page has had a turn; start the list over
+    }
+    topUpBankLater(difficulty);
   } else {
     const pick = (role: "start" | "end", exclude: string) =>
       difficulty === "hard" ? randomHardPage(role, [exclude]) : randomPopular([exclude]);
@@ -51,7 +62,7 @@ export async function createRoom(input: NewRoom): Promise<Room> {
     par = await measure(start, end).catch(() => null);
   }
 
-  const [startInfo, endInfo] = await Promise.all([getPageInfo(start), getPageInfo(end)]);
+  const [startInfo, endInfo] = infos ?? (await Promise.all([getPageInfo(start), getPageInfo(end)]));
   let id = makeRoomCode();
   while (await store.getRoom(id)) id = makeRoomCode();
 
@@ -74,6 +85,22 @@ export async function createRoom(input: NewRoom): Promise<Room> {
   };
   await store.saveRoom(room);
   return room;
+}
+
+// After responding, add a few pairs if the bank is running low, so it refills
+// between the daily cron runs (and fills itself on a fresh deployment).
+const TOP_UP_PAIRS = 3;
+const TOP_UP_MS = 45_000;
+function topUpBankLater(difficulty: Difficulty) {
+  try {
+    after(async () => {
+      if ((await bankSize(difficulty)) < BANK_TARGET[difficulty]) {
+        await refillBank(difficulty, Date.now() + TOP_UP_MS, TOP_UP_PAIRS);
+      }
+    });
+  } catch {
+    // Not inside a request (e.g. a script): skip the top-up.
+  }
 }
 
 export const isLastRound = (room: Room) => !!room.totalRounds && (room.round ?? 1) >= room.totalRounds;

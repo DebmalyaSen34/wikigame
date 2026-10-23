@@ -143,6 +143,16 @@ function PlayRoom({ roomId }: { roomId: string }) {
     if (t) prefetchArticle(t);
   }
 
+  // After an error: reload the current state (and page) from the server.
+  function retry() {
+    setLoading(true);
+    setError(null);
+    run("state").then((r) => {
+      apply(r);
+      refresh();
+    }, fail);
+  }
+
   function giveUp() {
     if (confirm("Give up this round? You'll see everyone's routes, but you'll be ranked last.")) send("giveup");
   }
@@ -367,7 +377,12 @@ function PlayRoom({ roomId }: { roomId: string }) {
           )}
 
           {error && (
-            <p className="mb-4 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>
+            <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+              <span className="min-w-0 flex-1">{error}</span>
+              <button onClick={retry} disabled={loading} className="btn-secondary h-8 px-3 text-sm">
+                Try again
+              </button>
+            </div>
           )}
 
           {timeUp && (

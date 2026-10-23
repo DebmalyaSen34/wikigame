@@ -7,6 +7,7 @@
 // the complete set of pages linking to the target (including via redirects),
 // "no 2-click route" is a proof, not a guess.
 
+import { cacheLife } from "next/cache";
 import type { Difficulty, Par } from "./game";
 import { API, POPULAR_TITLES, normalizeTitle, wikiFetch } from "./wiki";
 import { HARD_STARTS, HARD_TARGETS } from "./hardPool";
@@ -47,36 +48,55 @@ async function paged(params: Record<string, string>, maxPages: number, onPage: (
   return false;
 }
 
+// The raw lookups are kept in the shared cache (on Vercel, the runtime cache
+// used by all servers) for days, so a page's link lists are fetched from
+// Wikipedia once rather than by every short-lived server. Failures throw and
+// aren't cached. The in-memory layer on top turns them into Sets once per server.
+
+async function fetchOutgoing(title: string, maxPages: number): Promise<{ titles: string[]; complete: boolean }> {
+  "use cache: remote";
+  cacheLife("days");
+  const titles = new Set<string>();
+  const complete = await paged(
+    { action: "query", generator: "links", titles: title, gplnamespace: "0", gpllimit: "max", redirects: "1" },
+    maxPages,
+    (data) => {
+      for (const p of data.query?.pages ?? []) if (!p.missing && p.ns === 0) titles.add(normalizeTitle(p.title));
+    },
+  );
+  return { titles: [...titles], complete };
+}
+
+async function fetchIncoming(title: string, maxPages: number): Promise<{ titles: string[]; complete: boolean }> {
+  "use cache: remote";
+  cacheLife("days");
+  const titles = new Set<string>();
+  const complete = await paged(
+    { action: "query", list: "backlinks", bltitle: title, blnamespace: "0", bllimit: "max", blredirect: "1" },
+    maxPages,
+    (data) => {
+      for (const b of data.query?.backlinks ?? []) {
+        if (!b.redirect) titles.add(normalizeTitle(b.title));
+        for (const r of b.redirlinks ?? []) if (r.ns === 0) titles.add(normalizeTitle(r.title));
+      }
+    },
+  );
+  return { titles: [...titles], complete };
+}
+
 // Articles the start page links to, as canonical titles (redirects followed).
 export function outgoingLinks(title: string, maxPages = 10): Promise<LinkSet> {
   return cached(`out:${title}:${maxPages}`, async () => {
-    const titles = new Set<string>();
-    const complete = await paged(
-      { action: "query", generator: "links", titles: title, gplnamespace: "0", gpllimit: "max", redirects: "1" },
-      maxPages,
-      (data) => {
-        for (const p of data.query?.pages ?? []) if (!p.missing && p.ns === 0) titles.add(normalizeTitle(p.title));
-      },
-    );
-    return { titles, complete };
+    const r = await fetchOutgoing(title, maxPages);
+    return { titles: new Set(r.titles), complete: r.complete };
   });
 }
 
 // Articles that link to the target, directly or through one of its redirects.
 export function incomingLinks(title: string, maxPages = 4): Promise<LinkSet> {
   return cached(`in:${title}:${maxPages}`, async () => {
-    const titles = new Set<string>();
-    const complete = await paged(
-      { action: "query", list: "backlinks", bltitle: title, blnamespace: "0", bllimit: "max", blredirect: "1" },
-      maxPages,
-      (data) => {
-        for (const b of data.query?.backlinks ?? []) {
-          if (!b.redirect) titles.add(normalizeTitle(b.title));
-          for (const r of b.redirlinks ?? []) if (r.ns === 0) titles.add(normalizeTitle(r.title));
-        }
-      },
-    );
-    return { titles, complete };
+    const r = await fetchIncoming(title, maxPages);
+    return { titles: new Set(r.titles), complete: r.complete };
   });
 }
 
