@@ -68,7 +68,23 @@ body {
   font-size: 1.05rem;
   line-height: 1.65;
   overflow-wrap: break-word;
+  /* Backstop: nothing inside an article may spill over the sidebar or widen the page. */
+  position: relative;
+  overflow-x: clip;
+  /* Lets the layout below adapt to the article column's width, not the window's. */
+  container-type: inline-size;
 }
+/* Interactive maps are a fixed-size window with markers and labels absolutely
+   positioned around it, many deliberately outside the window. Wikipedia's own
+   CSS clips them; without this they scatter across the article. */
+.wiki .mw-kartographer-container,
+.wiki .mw-kartographer-map {
+  display: block;
+  position: relative;
+  overflow: hidden;
+  max-width: 100%;
+}
+.wiki .mw-kartographer-container img { max-width: none; }
 .wiki a[data-wiki] {
   color: var(--accent);
   text-decoration: none;
@@ -113,11 +129,21 @@ body {
 .wiki .infobox td { border: none; border-top: 1px solid var(--border); }
 .wiki .infobox-above,
 .wiki .infobox-title { font-size: 1.15rem; font-weight: 600; text-align: center; }
+.wiki .infobox-image,
+.wiki .infobox-caption { text-align: center; }
 .wiki figure,
 .wiki .thumb { margin: 0.5em 0 1em 1.2em; float: right; clear: right; max-width: 260px; }
 .wiki figure.mw-halign-left { float: left; margin: 0.5em 1.2em 1em 0; }
 .wiki figure.mw-halign-center,
 .wiki figure.mw-halign-none { float: none; margin: 1em auto; }
+/* Unfloated thumbs ("tnone"/"tcenter") and anything inside an infobox are centred, not floated. */
+.wiki .thumb.tnone,
+.wiki .thumb.tcenter,
+.wiki .infobox .thumb,
+.wiki .infobox figure { float: none; margin: 0.5em auto; max-width: 100%; }
+.wiki .thumbinner { max-width: 100%; }
+.wiki .infobox .thumbinner,
+.wiki .thumb.tnone .thumbinner { margin-inline: auto; }
 .wiki figcaption { font-size: 0.82rem; color: var(--muted); line-height: 1.4; padding-top: 0.3em; }
 .wiki .hatnote { font-style: italic; color: var(--muted); padding-left: 1.6em; margin-bottom: 0.6em; }
 .wiki .reflist,
@@ -135,11 +161,15 @@ body {
 .wiki .mw-references-wrap + .navbox-styles { display: none; }
 .wiki .mw-parser-output::after { content: ""; display: block; clear: both; }
 
-@media (max-width: 640px) {
-  .wiki .infobox,
+/* A floated infobox next to text needs room; in a narrow column it goes full width instead.
+   !important beats the infobox's inline width and Wikipedia's own infobox stylesheet. */
+@container (max-width: 720px) {
+  .wiki .infobox { float: none !important; width: 100% !important; margin: 1em 0 !important; }
+}
+@container (max-width: 560px) {
   .wiki figure,
-  .wiki .thumb { float: none; width: 100%; margin: 1em 0; max-width: 100%; }
-  .wiki table { display: block; overflow-x: auto; }
+  .wiki .thumb { float: none; margin: 1em auto; max-width: 100%; }
+  .wiki table:not(.infobox) { display: block; overflow-x: auto; }
 }
 
 @media (prefers-color-scheme: dark) {

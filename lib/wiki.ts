@@ -116,7 +116,9 @@ function rewriteHtml(raw: string): { html: string; links: string[] } {
     });
 
   // Protocol-relative image URLs would otherwise resolve against our origin's scheme; make them explicit.
-  html = html.replace(/(src|srcset)="\/\//g, '$1="https://').replace(/, \/\/upload/g, ", https://upload");
+  html = html
+    .replace(/\ssrc="\/\//g, ' src="https://')
+    .replace(/\ssrcset="([^"]*)"/g, (_m, set: string) => ` srcset="${set.replace(/(^|,\s*)\/\//g, "$1https://")}"`);
 
   return { html, links: [...links] };
 }
