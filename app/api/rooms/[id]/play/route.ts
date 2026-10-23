@@ -3,6 +3,8 @@ import { incomingLinks } from "@/lib/distance";
 import { store } from "@/lib/store";
 import { getArticle, normalizeTitle } from "@/lib/wiki";
 import { withErrors } from "@/lib/api";
+import { after } from "next/server";
+import { everyoneDone, startNextRound } from "@/lib/rooms";
 
 // POST /api/rooms/:id/play { token, action, to? }
 //   action "state"  -> current page (used on load / resume)
@@ -57,6 +59,14 @@ export const POST = withErrors(async function POST(req: Request, ctx: RouteConte
       player.status = "gaveup";
       player.finishedAt = Date.now();
       await store.savePlayer(room.id, player);
+    }
+
+    // The last player to finish (or give up) ends the round; set up the next
+    // one after responding, so their final click isn't slowed down.
+    if (action !== "state" && player.status !== "playing") {
+      after(async () => {
+        if (await everyoneDone(room.id)) await startNextRound(room.id);
+      });
     }
 
     const article = await getArticle(player.path.at(-1)!);

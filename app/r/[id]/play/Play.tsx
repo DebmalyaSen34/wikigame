@@ -10,6 +10,7 @@ import { Leaderboard } from "@/components/Leaderboard";
 import { RouteGraph, type GraphPlayer } from "@/components/RouteGraph";
 import { DifficultyBadge } from "@/components/DifficultyInfo";
 import { ArticleSkeleton, ProgressBar } from "@/components/Spinner";
+import { NextRound } from "@/components/NextRound";
 
 type Me = Omit<Player, "token">;
 type Action = "state" | "click" | "back" | "giveup";
@@ -18,9 +19,14 @@ type Loaded = { res: MoveResponse; article: Article };
 
 const HOVER_PREFETCH_MS = 80;
 
+// Keyed by room so moving to another room (e.g. the next round) starts from
+// a clean slate instead of briefly showing the previous room's state.
 export function Play() {
   const { id } = useParams<{ id: string }>();
-  const roomId = id.toUpperCase();
+  return <PlayRoom key={id.toUpperCase()} roomId={id.toUpperCase()} />;
+}
+
+function PlayRoom({ roomId }: { roomId: string }) {
   const router = useRouter();
   const { view, refresh } = useRoomView(roomId);
   const [me, setMe] = useState<Me | null>(null);
@@ -262,6 +268,11 @@ export function Play() {
 
       <div className="mx-auto grid w-full max-w-6xl flex-1 gap-8 px-4 py-5 lg:grid-cols-[minmax(0,1fr)_300px] lg:py-6">
         <main className="min-w-0 pb-20 lg:pb-0">
+          {view && me && (
+            <div className="mb-4 flex flex-col empty:hidden">
+              <NextRound view={view} myName={me.name} myStatus={me.status} />
+            </div>
+          )}
           {me && !playing && (
             <div
               className={`mb-6 flex flex-col gap-2 rounded-2xl border p-4 sm:p-5 ${
@@ -269,6 +280,7 @@ export function Play() {
               }`}
             >
               <p className="font-serif text-2xl font-semibold">
+                {(room?.round ?? 1) > 1 && <span className="mr-2 text-base font-normal text-muted">Round {room?.round}</span>}
                 {me.status === "finished"
                   ? `You made it in ${me.clicks} click${me.clicks === 1 ? "" : "s"}!`
                   : "You gave up this round."}

@@ -18,6 +18,9 @@ interface Store {
   getPlayer(roomId: string, token: string): Promise<Player | null>;
   savePlayer(roomId: string, player: Player): Promise<void>;
   listPlayers(roomId: string): Promise<Player[]>;
+  // A short-lived lock: true for exactly one caller until it expires or is released.
+  claim(key: string, ttlSeconds: number): Promise<boolean>;
+  release(key: string): Promise<void>;
 }
 
 const TTL_SECONDS = 60 * 60 * 24 * 7; // rooms expire after a week in Redis
@@ -57,6 +60,12 @@ function redisStore(url: string, token: string): Store {
       for (let i = 1; i < flat.length; i += 2) out.push(JSON.parse(flat[i]));
       return out;
     },
+    async claim(key, ttlSeconds) {
+      return (await cmd("SET", `lock:${key}`, "1", "NX", "EX", ttlSeconds)) === "OK";
+    },
+    async release(key) {
+      await cmd("DEL", `lock:${key}`);
+    },
   };
 }
 
@@ -92,6 +101,24 @@ function fileStore(root: string): Store {
       const players = await Promise.all(files.map((f) => readJson<Player>(path.join(dir, f))));
       return players.filter((p): p is Player => p !== null);
     },
+    async claim(key, ttlSeconds) {
+      const file = path.join(root, "_locks", `${safe(key)}.lock`);
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      try {
+        const stat = await fs.stat(file);
+        if (Date.now() - stat.mtimeMs < ttlSeconds * 1000) return false;
+        await fs.unlink(file); // expired
+      } catch {}
+      try {
+        await fs.writeFile(file, String(Date.now()), { flag: "wx" }); // fails if someone else just created it
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    async release(key) {
+      await fs.unlink(path.join(root, "_locks", `${safe(key)}.lock`)).catch(() => {});
+    },
   };
 }
 
@@ -113,7 +140,15 @@ function unconfiguredStore(): Store {
   const fail = async (): Promise<never> => {
     throw new StoreNotConfiguredError();
   };
-  return { getRoom: fail, saveRoom: fail, getPlayer: fail, savePlayer: fail, listPlayers: fail };
+  return {
+    getRoom: fail,
+    saveRoom: fail,
+    getPlayer: fail,
+    savePlayer: fail,
+    listPlayers: fail,
+    claim: fail,
+    release: fail,
+  };
 }
 
 export const store: Store =

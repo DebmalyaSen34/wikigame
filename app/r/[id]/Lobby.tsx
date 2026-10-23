@@ -11,10 +11,16 @@ import { RouteGraph, type GraphPlayer } from "@/components/RouteGraph";
 import { DIFFICULTIES } from "@/lib/game";
 import { roomShareUrl } from "@/lib/site";
 import { Spinner } from "@/components/Spinner";
+import { NextRound } from "@/components/NextRound";
 
+// Keyed by room so moving to another room (e.g. the next round) starts from
+// a clean slate instead of briefly showing the previous room's state.
 export function Lobby() {
   const { id } = useParams<{ id: string }>();
-  const roomId = id.toUpperCase();
+  return <LobbyRoom key={id.toUpperCase()} roomId={id.toUpperCase()} />;
+}
+
+function LobbyRoom({ roomId }: { roomId: string }) {
   const router = useRouter();
   const { view, error } = useRoomView(roomId);
   const savedName = useBrowserValue(getSavedName, "");
@@ -82,6 +88,7 @@ export function Lobby() {
   }
 
   const { room } = view;
+  const me = view.players.find((p) => p.id === view.meId);
   const invite = `Race me on WikiRace: get from ${room.start} to ${room.end} in the fewest clicks (${DIFFICULTIES[room.difficulty ?? "normal"].label}).`;
   // Only includes routes this viewer is allowed to see (their own, or everyone's once they're done).
   const routes = view.players.filter((p) => p.path) as GraphPlayer[];
@@ -92,7 +99,10 @@ export function Lobby() {
         <Link href="/" className="font-serif text-2xl font-semibold">
           WikiRace
         </Link>
-        <span className="rounded-full border border-border bg-surface px-3 py-1 font-mono text-sm">{room.id}</span>
+        <div className="flex items-center gap-2">
+          {(room.round ?? 1) > 1 && <span className="text-sm text-muted">Round {room.round}</span>}
+          <span className="rounded-full border border-border bg-surface px-3 py-1 font-mono text-sm">{room.id}</span>
+        </div>
       </div>
 
       <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
@@ -103,6 +113,12 @@ export function Lobby() {
         <PageCard label="To" info={room.endInfo} highlight />
       </div>
       <DifficultyInfo room={room} revealRoute={view.viewerDone} />
+      <NextRound view={view} myName={me?.name} myStatus={me?.status} />
+      {room.prevRoomId && (
+        <Link href={`/r/${room.prevRoomId}`} className="text-sm text-muted underline-offset-2 hover:underline">
+          ← Round {(room.round ?? 2) - 1} results
+        </Link>
+      )}
       {room.endInfo.extract && (
         <p className="rounded-xl border border-border bg-surface p-4 font-serif text-sm leading-relaxed text-muted">
           <span className="font-sans font-medium text-foreground">About the target: </span>
