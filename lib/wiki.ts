@@ -1,6 +1,7 @@
 // Server-only helpers for talking to the Wikipedia API and turning article
 // HTML into something the game can render and validate clicks against.
 
+import { cacheLife } from "next/cache";
 import type { PageInfo } from "./game";
 
 export const API = "https://en.wikipedia.org/w/api.php";
@@ -101,7 +102,12 @@ export function getArticle(title: string): Promise<Article> {
   return value;
 }
 
+// Shared by every server instance (on Vercel, the runtime cache), so a page
+// is fetched from Wikipedia and processed once rather than once per instance.
+// This matters because Wikipedia rate-limits us and big pages take seconds.
 async function loadArticle(title: string): Promise<Article> {
+  "use cache: remote";
+  cacheLife("days");
   const params = new URLSearchParams({
     action: "parse",
     page: title,
@@ -153,13 +159,17 @@ function rewriteHtml(raw: string): { html: string; links: string[] } {
       const title = href ? titleFromHref(href.replace(/&amp;/g, "&")) : null;
       if (!title) return `<span class="wg-dead">${inner}</span>`;
       links.add(title);
-      return `<a href="#" data-wiki="${escapeAttr(title)}" title="${escapeAttr(title)}">${inner}</a>`;
-    });
+      return `<a href="#" data-wiki="${escapeAttr(title)}">${inner}</a>`;
+    })
+    // Slimming: about a third of Wikipedia's HTML is markup the game never uses.
+    .replace(/<!--[\s\S]*?-->/g, "")
+    // Citation markers like [12] and [citation needed] link nowhere playable.
+    .replace(/<sup\b[^>]*class="[^"]*\b(reference|Inline-Template)\b[^"]*"[^>]*>[\s\S]*?<\/sup>/g, "")
+    // Parser bookkeeping, plus 2x image variants (srcset) that mostly cost mobile data.
+    .replace(/\s(?:data-(?!wiki=)[\w-]+|about|typeof|resource|id|decoding|rel|lang|srcset|role|aria-[\w-]+)="[^"]*"/g, "");
 
   // Protocol-relative image URLs would otherwise resolve against our origin's scheme; make them explicit.
-  html = html
-    .replace(/\ssrc="\/\//g, ' src="https://')
-    .replace(/\ssrcset="([^"]*)"/g, (_m, set: string) => ` srcset="${set.replace(/(^|,\s*)\/\//g, "$1https://")}"`);
+  html = html.replace(/\ssrc="\/\//g, ' src="https://');
 
   return { html, links: [...links] };
 }

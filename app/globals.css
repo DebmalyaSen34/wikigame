@@ -185,3 +185,23 @@ body {
   border-radius: 3px;
   padding: 0 2px;
 }
+
+/* Indeterminate progress bar sweep. */
+@keyframes wg-progress {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
+}
+.wg-progress { animation: wg-progress 1.1s ease-in-out infinite; }
+
+/* The link the player just tapped, while its page loads. */
+.wiki a[data-wiki].wg-loading {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-radius: 3px;
+  animation: wg-pulse 0.9s ease-in-out infinite;
+}
+@keyframes wg-pulse {
+  50% { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wg-progress, .wiki a[data-wiki].wg-loading { animation: none; }
+}

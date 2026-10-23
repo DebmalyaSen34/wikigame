@@ -10,6 +10,7 @@ import { DifficultyInfo } from "@/components/DifficultyInfo";
 import { RouteGraph, type GraphPlayer } from "@/components/RouteGraph";
 import { DIFFICULTIES } from "@/lib/game";
 import { roomShareUrl } from "@/lib/site";
+import { Spinner } from "@/components/Spinner";
 
 export function Lobby() {
   const { id } = useParams<{ id: string }>();
@@ -72,7 +73,13 @@ export function Lobby() {
       </main>
     );
   }
-  if (!view) return <main className="flex flex-1 items-center justify-center text-muted">Loading room…</main>;
+  if (!view) {
+    return (
+      <main className="flex flex-1 items-center justify-center gap-2 text-muted">
+        <Spinner /> Loading room…
+      </main>
+    );
+  }
 
   const { room } = view;
   const invite = `Race me on WikiRace: get from ${room.start} to ${room.end} in the fewest clicks (${DIFFICULTIES[room.difficulty ?? "normal"].label}).`;
@@ -80,7 +87,7 @@ export function Lobby() {
   const routes = view.players.filter((p) => p.path) as GraphPlayer[];
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-10">
+    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-5 px-4 py-6 sm:gap-6 sm:py-10">
       <div className="flex items-center justify-between gap-3">
         <Link href="/" className="font-serif text-2xl font-semibold">
           WikiRace
@@ -136,7 +143,8 @@ export function Lobby() {
               maxLength={24}
               className="input min-w-0 flex-1"
             />
-            <button disabled={busy || !name.trim()} className="btn-primary">
+            <button disabled={busy || !name.trim()} className="btn-primary gap-2">
+              {busy && <Spinner />}
               {busy ? "Starting…" : "Start"}
             </button>
           </div>

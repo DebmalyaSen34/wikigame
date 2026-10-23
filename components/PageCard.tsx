@@ -15,7 +15,7 @@ export function PageCard({ label, info, highlight }: { label: string; info: Page
       )}
       <div className="min-w-0">
         <p className="text-xs font-medium uppercase tracking-wide text-muted">{label}</p>
-        <p className="truncate font-serif text-xl font-semibold">{info.title}</p>
+        <p className="break-words font-serif text-xl font-semibold leading-snug">{info.title}</p>
         {info.description && <p className="line-clamp-2 text-sm text-muted">{info.description}</p>}
       </div>
     </div>

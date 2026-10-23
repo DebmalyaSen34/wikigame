@@ -62,7 +62,8 @@ export const POST = withErrors(async function POST(req: Request, ctx: RouteConte
     const article = await getArticle(player.path.at(-1)!);
     return Response.json({
       me: { ...player, token: undefined },
-      article: { title: article.title, displayTitle: article.displayTitle, html: article.html },
+      // The HTML itself comes from the CDN-cached /api/article, fetched in parallel by the client.
+      article: { title: article.title, displayTitle: article.displayTitle },
       hints: rules.hints && player.status === "playing" ? await hintsFor(article.links, room.end) : [],
     });
   } catch {
