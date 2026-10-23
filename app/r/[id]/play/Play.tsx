@@ -11,6 +11,9 @@ import { RouteGraph, type GraphPlayer } from "@/components/RouteGraph";
 import { DifficultyBadge } from "@/components/DifficultyInfo";
 import { ArticleSkeleton, ProgressBar } from "@/components/Spinner";
 import { NextRound } from "@/components/NextRound";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { useResolvedTheme } from "@/lib/theme";
+import { applyContrastFix } from "@/lib/contrastFix";
 
 type Me = Omit<Player, "token">;
 type Action = "state" | "click" | "back" | "giveup";
@@ -40,6 +43,7 @@ function PlayRoom({ roomId }: { roomId: string }) {
   const contentRef = useRef<HTMLDivElement>(null);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const now = useNow(me?.status === "playing");
+  const theme = useResolvedTheme();
 
   const post = useCallback(
     async (action: Action, to?: string) => {
@@ -154,6 +158,11 @@ function PlayRoom({ roomId }: { roomId: string }) {
     });
   }, [article, hints]);
 
+  // Keep links and table text readable on Wikipedia's hardcoded box colours (see lib/contrastFix.ts).
+  useEffect(() => {
+    if (contentRef.current) applyContrastFix(contentRef.current, theme);
+  }, [article, theme]);
+
   // Show which link is loading.
   useEffect(() => {
     contentRef.current?.querySelectorAll<HTMLAnchorElement>("a.wg-loading").forEach((a) => a.classList.remove("wg-loading"));
@@ -207,7 +216,7 @@ function PlayRoom({ roomId }: { roomId: string }) {
             type="button"
             onClick={() => setTargetOpen((o) => !o)}
             aria-expanded={targetOpen}
-            className="order-3 flex w-full min-w-0 items-center gap-2 rounded-lg text-left text-sm sm:order-2 sm:w-auto sm:flex-1"
+            className="order-3 flex min-w-0 grow basis-[calc(100%-3rem)] items-center gap-2 rounded-lg text-left text-sm sm:order-2 sm:basis-auto sm:flex-1"
           >
             <span className="shrink-0 text-muted">Target</span>
             <span className="min-w-0 break-words rounded-md bg-target/40 px-2 py-0.5 font-semibold sm:truncate">
@@ -226,6 +235,9 @@ function PlayRoom({ roomId }: { roomId: string }) {
             </span>
             <span className="text-muted">{formatDuration(elapsed)}</span>
           </div>
+
+          {/* Phones: shares the target row, so the stats and buttons still fit on one row. */}
+          <ThemeToggle className="order-3 sm:order-5" />
 
           {playing && (
             <div className="order-2 flex gap-2 sm:order-4">

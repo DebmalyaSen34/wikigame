@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { api, getSavedName, saveName, useBrowserValue } from "@/lib/client";
 import { DIFFICULTIES, type Difficulty } from "@/lib/game";
 import { Spinner } from "@/components/Spinner";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function Home() {
   const router = useRouter();
@@ -60,7 +61,10 @@ export default function Home() {
   return (
     <main className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-6 px-4 py-8 sm:gap-8 sm:py-20">
       <header className="flex flex-col gap-3">
-        <h1 className="font-serif text-4xl font-semibold tracking-tight sm:text-5xl">WikiRace</h1>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="font-serif text-4xl font-semibold tracking-tight sm:text-5xl">WikiRace</h1>
+          <ThemeToggle />
+        </div>
         <p className="text-base text-muted sm:text-lg">
           Pick two Wikipedia pages. Get from one to the other using only the links in the articles. Fewest clicks wins,
           and time breaks ties.

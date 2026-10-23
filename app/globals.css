@@ -6,31 +6,45 @@
   --foreground: #1c1b19;
   --muted: #6b675f;
   --border: #e3dfd6;
-  --accent: #3157c8;
+  /* Dark enough to stay readable on Wikipedia's lavender table headers (#ccf). */
+  --accent: #2a4cb5;
   --accent-ink: #ffffff;
   --target: #f6d04d;
   --success: #1f8a4c;
   --danger: #c2412d;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #121211;
-    --surface: #1c1c1a;
-    --foreground: #ecebe6;
-    --muted: #a19d93;
-    --border: #2f2e2a;
-    --accent: #7c9cff;
-    --accent-ink: #0d0d0c;
-    --target: #e2b93b;
-    --success: #4cc283;
-    --danger: #f07a63;
-  }
+/* The theme is resolved (Light / Dark / System) by a script in <head> before
+   first paint, which sets data-theme on <html>; see lib/theme.ts. */
+:root {
+  color-scheme: light;
+  --surface-2: #f1efe9;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #121211;
+  --surface: #1c1c1a;
+  --surface-2: #26251f;
+  --foreground: #ecebe6;
+  --muted: #a19d93;
+  --border: #2f2e2a;
+  --accent: #7c9cff;
+  --accent-ink: #0d0d0c;
+  --target: #e2b93b;
+  --success: #4cc283;
+  --danger: #f07a63;
+  /* Wikipedia's own design tokens, which some article styles read. */
+  --background-color-base: #1c1c1a;
+  --background-color-neutral-subtle: #1c1c1a;
+  --background-color-interactive-subtle: #26251f;
+  --border-color-base: #3a3934;
+  --color-base: #ecebe6;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-border: var(--border);
@@ -172,10 +186,45 @@ body {
   .wiki table:not(.infobox) { display: block; overflow-x: auto; }
 }
 
-@media (prefers-color-scheme: dark) {
-  .wiki img { background: #fff1; }
-  .wiki [style*="background"] { background: transparent !important; color: inherit !important; }
+/* ---------- Articles in the dark theme ----------
+   Wikipedia's article styles hardcode light colours (its own night mode
+   overrides them from a site stylesheet we don't load), so boxes such as the
+   navigation tables at the bottom stay white and our links vanish in them. */
+:root[data-theme="dark"] .wiki img {
+  /* Diagrams and maps are often transparent with dark lines. */
+  background: rgb(255 255 255 / 0.92);
 }
+:root[data-theme="dark"] .wiki [style*="background"] {
+  background: transparent !important;
+  color: inherit !important;
+}
+:root[data-theme="dark"] .wiki :is(.navbox, .navbox-subgroup, .navbox-list, .navbox-odd, .navbox-even, .wikitable td, .sidebar,
+    .sidebar-content, .ambox, .tmbox, .ombox, .cmbox, .fmbox, .quotebox, .side-box, .metadata, .infobox, .infobox td) {
+  background-color: var(--surface) !important;
+  color: var(--foreground) !important;
+}
+:root[data-theme="dark"] .wiki :is(.navbox-title, .navbox-group, .navbox-abovebelow, .navbox-subgroup .navbox-group,
+    .wikitable th, .sidebar-title, .sidebar-heading, .sidebar-above, .infobox-header, .infobox-above, .infobox th) {
+  background-color: var(--surface-2) !important;
+  color: var(--foreground) !important;
+}
+:root[data-theme="dark"] .wiki :is(.navbox, .navbox-inner, .navbox-list, .wikitable, .wikitable th, .wikitable td) {
+  border-color: var(--border) !important;
+}
+/* Game links keep our link colour even where a template sets its own (often
+   a dark navy that disappears on dark backgrounds). */
+:root[data-theme="dark"] .wiki a[data-wiki] { color: var(--accent) !important; }
+
+/* Safety net set by lib/contrastFix.ts, for templates the rules above miss. */
+:root[data-theme="dark"] .wiki .wg-light-bg { background-color: var(--surface) !important; }
+:root[data-theme="dark"] .wiki th.wg-light-bg { background-color: var(--surface-2) !important; }
+:root[data-theme="dark"] .wiki .wg-dark-text { color: var(--foreground) !important; }
+/* Text or links on a box colour they'd vanish into (both themes). Placed after
+   the dark link rule above, with equal specificity, so these win. */
+:root .wiki .wg-ink-light,
+:root .wiki a[data-wiki].wg-ink-light { color: #f3f2ee !important; }
+:root .wiki .wg-ink-dark,
+:root .wiki a[data-wiki].wg-ink-dark { color: #1c1b19 !important; }
 
 /* Easy-mode hints: links that lead to the target or to a page linking to it. */
 .wiki a[data-wiki].wg-hint,

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Newsreader } from "next/font/google";
 import "./globals.css";
 import { SITE_URL } from "@/lib/site";
+import { themeInitScript } from "@/lib/themeScript";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,10 +33,16 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
+    // The theme script below sets data-theme and a class on <html> before React
+    // hydrates, so those attributes are expected to differ from the server render.
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${newsreader.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body className="min-h-full flex flex-col font-sans">{children}</body>
     </html>
   );

@@ -12,6 +12,7 @@ import { DIFFICULTIES } from "@/lib/game";
 import { roomShareUrl } from "@/lib/site";
 import { Spinner } from "@/components/Spinner";
 import { NextRound } from "@/components/NextRound";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 // Keyed by room so moving to another room (e.g. the next round) starts from
 // a clean slate instead of briefly showing the previous room's state.
@@ -102,6 +103,7 @@ function LobbyRoom({ roomId }: { roomId: string }) {
         <div className="flex items-center gap-2">
           {(room.round ?? 1) > 1 && <span className="text-sm text-muted">Round {room.round}</span>}
           <span className="rounded-full border border-border bg-surface px-3 py-1 font-mono text-sm">{room.id}</span>
+          <ThemeToggle />
         </div>
       </div>
 
