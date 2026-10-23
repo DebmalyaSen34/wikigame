@@ -1,11 +1,12 @@
 import type { NextRequest } from "next/server";
 import { rankPlayers, toPublic, type RoomView } from "@/lib/game";
 import { store } from "@/lib/store";
+import { withErrors } from "@/lib/api";
 
 // GET /api/rooms/:id -> room + leaderboard.
 // Send the x-player-token header to identify yourself; other players' routes
 // are only revealed once you've finished or given up.
-export async function GET(req: NextRequest, ctx: RouteContext<"/api/rooms/[id]">) {
+export const GET = withErrors(async function GET(req: NextRequest, ctx: RouteContext<"/api/rooms/[id]">) {
   const { id } = await ctx.params;
   const room = await store.getRoom(id.toUpperCase());
   if (!room) return Response.json({ error: "Room not found" }, { status: 404 });
@@ -22,4 +23,4 @@ export async function GET(req: NextRequest, ctx: RouteContext<"/api/rooms/[id]">
     viewerDone,
   };
   return Response.json(view);
-}
+});

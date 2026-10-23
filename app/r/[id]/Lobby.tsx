@@ -8,6 +8,8 @@ import { Leaderboard } from "@/components/Leaderboard";
 import { PageCard } from "@/components/PageCard";
 import { DifficultyInfo } from "@/components/DifficultyInfo";
 import { RouteGraph, type GraphPlayer } from "@/components/RouteGraph";
+import { DIFFICULTIES } from "@/lib/game";
+import { roomShareUrl } from "@/lib/site";
 
 export function Lobby() {
   const { id } = useParams<{ id: string }>();
@@ -18,10 +20,11 @@ export function Lobby() {
   const [editedName, setName] = useState<string | null>(null);
   const name = editedName ?? savedName;
   const hasToken = useBrowserValue(() => !!getToken(roomId), false);
-  const shareUrl = useBrowserValue(() => `${window.location.origin}/r/${roomId}`, "");
+  const shareUrl = useBrowserValue(() => roomShareUrl(roomId, window.location.origin), "");
+  const canNativeShare = useBrowserValue(() => typeof navigator.share === "function", false);
   const [busy, setBusy] = useState(false);
   const [joinError, setJoinError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"link" | "invite" | null>(null);
 
   async function join(e: React.FormEvent) {
     e.preventDefault();
@@ -38,12 +41,25 @@ export function Lobby() {
     }
   }
 
-  async function copy() {
+  async function copy(what: "link" | "invite", text: string) {
     try {
-      await navigator.clipboard.writeText(shareUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      await navigator.clipboard.writeText(text);
+      setCopied(what);
+      setTimeout(() => setCopied(null), 1500);
     } catch {}
+  }
+
+  // Phones get the system share sheet (WhatsApp, Messages…); elsewhere the invite is copied.
+  async function share(text: string) {
+    if (canNativeShare) {
+      try {
+        await navigator.share({ title: "WikiRace", text, url: shareUrl });
+        return;
+      } catch (e) {
+        if ((e as Error).name === "AbortError") return; // closed the share sheet
+      }
+    }
+    copy("invite", `${text}\n${shareUrl}`);
   }
 
   if (error && !view) {
@@ -59,6 +75,7 @@ export function Lobby() {
   if (!view) return <main className="flex flex-1 items-center justify-center text-muted">Loading room…</main>;
 
   const { room } = view;
+  const invite = `Race me on WikiRace: get from ${room.start} to ${room.end} in the fewest clicks (${DIFFICULTIES[room.difficulty ?? "normal"].label}).`;
   // Only includes routes this viewer is allowed to see (their own, or everyone's once they're done).
   const routes = view.players.filter((p) => p.path) as GraphPlayer[];
 
@@ -88,13 +105,19 @@ export function Lobby() {
 
       <section className="flex flex-col gap-2 rounded-2xl border border-border bg-surface p-5">
         <h2 className="font-semibold">Invite friends</h2>
-        <p className="text-sm text-muted">Send them this link. Everyone races the same two pages, whenever suits them.</p>
+        <p className="text-sm text-muted">
+          Send them this link, or the room code <span className="font-mono font-semibold text-foreground">{room.id}</span>.
+          Everyone races the same two pages, whenever suits them.
+        </p>
         <div className="flex gap-2">
           <input readOnly value={shareUrl} className="input min-w-0 flex-1 font-mono text-sm" onFocus={(e) => e.target.select()} />
-          <button onClick={copy} className="btn-secondary w-24">
-            {copied ? "Copied" : "Copy"}
+          <button onClick={() => copy("link", shareUrl)} className="btn-secondary w-28 shrink-0">
+            {copied === "link" ? "Copied" : "Copy link"}
           </button>
         </div>
+        <button onClick={() => share(invite)} className="btn-secondary self-start">
+          {copied === "invite" ? "Invite copied" : canNativeShare ? "Share invite…" : "Copy invite message"}
+        </button>
       </section>
 
       {hasToken ? (

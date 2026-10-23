@@ -2,13 +2,14 @@ import { DIFFICULTIES, makeRoomCode, type Difficulty, type Room } from "@/lib/ga
 import { store } from "@/lib/store";
 import { generatePair, measure } from "@/lib/distance";
 import { getPageInfo, randomArticle, randomPopular, resolveTitle } from "@/lib/wiki";
+import { withErrors } from "@/lib/api";
 
 // POST /api/rooms { name, difficulty?, start?, end? } -> { id }
 //
 // With both pages left blank, the server picks a pair that matches the
 // difficulty and records what it proved about the shortest route. With pages
 // typed in, the difficulty only sets the rules, and the route is measured.
-export async function POST(req: Request) {
+export const POST = withErrors(async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const createdBy = String(body.name ?? "").trim().slice(0, 24) || "Someone";
   const difficulty: Difficulty = body.difficulty in DIFFICULTIES ? body.difficulty : "normal";
@@ -47,4 +48,4 @@ export async function POST(req: Request) {
   const room: Room = { id, difficulty, par, start, end, startInfo, endInfo, createdAt: Date.now(), createdBy };
   await store.saveRoom(room);
   return Response.json({ id });
-}
+});

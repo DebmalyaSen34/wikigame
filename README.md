@@ -24,11 +24,24 @@ Open http://localhost:3000. In dev, rooms are saved as JSON files under `.data/`
 
 ## Deploy (Vercel)
 
-Serverless functions don't share a disk, so add a Redis database:
+Live at **https://wikigame-indol.vercel.app**.
 
-1. Create a free [Upstash Redis](https://upstash.com) database (or add one from the Vercel Marketplace).
-2. Set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` (Vercel's `KV_REST_API_URL` / `KV_REST_API_TOKEN` also work).
-3. Optionally set `WIKI_USER_AGENT` (it must include a contact URL or email: Wikimedia limits clients without one to 10 requests/minute, versus 200 with one).
+Vercel's functions can't keep files, so rooms need a Redis database. Without one, creating a room
+fails with "Room storage isn't set up on this deployment".
+
+1. In the Vercel dashboard, open the project → **Storage** → **Create Database** → **Upstash for Redis**
+   (free plan is plenty), and connect it to the project for all environments.
+   This adds `KV_REST_API_URL` and `KV_REST_API_TOKEN`, which the app picks up automatically
+   (`UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` work too).
+2. Redeploy (Deployments → ⋯ → Redeploy) so the new variables take effect.
+3. Optional: set `NEXT_PUBLIC_SITE_URL` if the site moves to a custom domain. Share links and link
+   previews use it; it defaults to `https://wikigame-indol.vercel.app`.
+4. Optional: set `WIKI_USER_AGENT` (it must include a contact URL or email: Wikimedia limits clients
+   without one to 10 requests/minute, versus 200 with one).
+
+Share links always point at the public site, even when opened from a preview deployment, because
+friends usually can't open preview URLs. Locally they use your own address (e.g. `localhost:3000`),
+since that's where local rooms live.
 
 ## Code map
 

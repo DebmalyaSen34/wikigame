@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Newsreader } from "next/font/google";
 import "./globals.css";
+import { SITE_URL } from "@/lib/site";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,8 +19,15 @@ const newsreader = Newsreader({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: "WikiRace",
   description: "Race your friends from one Wikipedia page to another in the fewest clicks.",
+  openGraph: {
+    siteName: "WikiRace",
+    title: "WikiRace",
+    description: "Race your friends from one Wikipedia page to another in the fewest clicks.",
+    type: "website",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

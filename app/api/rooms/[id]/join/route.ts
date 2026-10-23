@@ -1,8 +1,9 @@
 import type { Player } from "@/lib/game";
 import { store } from "@/lib/store";
+import { withErrors } from "@/lib/api";
 
 // POST /api/rooms/:id/join { name } -> { token }. The clock starts now.
-export async function POST(req: Request, ctx: RouteContext<"/api/rooms/[id]/join">) {
+export const POST = withErrors(async function POST(req: Request, ctx: RouteContext<"/api/rooms/[id]/join">) {
   const { id } = await ctx.params;
   const room = await store.getRoom(id.toUpperCase());
   if (!room) return Response.json({ error: "Room not found" }, { status: 404 });
@@ -24,4 +25,4 @@ export async function POST(req: Request, ctx: RouteContext<"/api/rooms/[id]/join
   };
   await store.savePlayer(room.id, player);
   return Response.json({ token: player.token });
-}
+});

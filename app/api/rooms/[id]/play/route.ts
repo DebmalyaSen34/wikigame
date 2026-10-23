@@ -2,6 +2,7 @@ import { DIFFICULTIES } from "@/lib/game";
 import { incomingLinks } from "@/lib/distance";
 import { store } from "@/lib/store";
 import { getArticle, normalizeTitle } from "@/lib/wiki";
+import { withErrors } from "@/lib/api";
 
 // POST /api/rooms/:id/play { token, action, to? }
 //   action "state"  -> current page (used on load / resume)
@@ -12,7 +13,7 @@ import { getArticle, normalizeTitle } from "@/lib/wiki";
 // The server owns the game state: a click is only accepted if the target is
 // actually linked from the player's current page, so URL hacking can't skip ahead,
 // and the room's difficulty rules are enforced here rather than just hidden in the UI.
-export async function POST(req: Request, ctx: RouteContext<"/api/rooms/[id]/play">) {
+export const POST = withErrors(async function POST(req: Request, ctx: RouteContext<"/api/rooms/[id]/play">) {
   const { id } = await ctx.params;
   const body = await req.json().catch(() => ({}));
   const room = await store.getRoom(id.toUpperCase());
@@ -67,7 +68,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/rooms/[id]/play
   } catch {
     return Response.json({ error: "Couldn't load that page from Wikipedia, try again" }, { status: 502 });
   }
-}
+});
 
 // Easy mode: links on this page that go to the target, or to a page that links to it.
 async function hintsFor(links: string[], end: string): Promise<string[]> {

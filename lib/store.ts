@@ -98,7 +98,27 @@ function fileStore(root: string): Store {
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
 const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
 
+export class StoreNotConfiguredError extends Error {
+  constructor() {
+    super(
+      "Room storage isn't set up on this deployment. In Vercel, open the project's Storage tab, " +
+        "connect an Upstash for Redis database to it, then redeploy.",
+    );
+  }
+}
+
+// Vercel's filesystem is read-only and not shared between requests, so local
+// files can't hold rooms there. Fail every call with a clear message instead.
+function unconfiguredStore(): Store {
+  const fail = async (): Promise<never> => {
+    throw new StoreNotConfiguredError();
+  };
+  return { getRoom: fail, saveRoom: fail, getPlayer: fail, savePlayer: fail, listPlayers: fail };
+}
+
 export const store: Store =
   redisUrl && redisToken
     ? redisStore(redisUrl, redisToken)
-    : fileStore(path.join(process.cwd(), ".data", "rooms"));
+    : process.env.VERCEL
+      ? unconfiguredStore()
+      : fileStore(path.join(process.cwd(), ".data", "rooms"));
