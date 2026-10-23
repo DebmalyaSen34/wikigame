@@ -13,6 +13,7 @@ import { roomShareUrl } from "@/lib/site";
 import { Spinner } from "@/components/Spinner";
 import { NextRound } from "@/components/NextRound";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { GameStandings } from "@/components/GameStandings";
 
 // Keyed by room so moving to another room (e.g. the next round) starts from
 // a clean slate instead of briefly showing the previous room's state.
@@ -101,7 +102,13 @@ function LobbyRoom({ roomId }: { roomId: string }) {
           WikiRace
         </Link>
         <div className="flex items-center gap-2">
-          {(room.round ?? 1) > 1 && <span className="text-sm text-muted">Round {room.round}</span>}
+          {room.totalRounds ? (
+            <span className="text-sm text-muted">
+              Round {room.round ?? 1} of {room.totalRounds}
+            </span>
+          ) : (
+            (room.round ?? 1) > 1 && <span className="text-sm text-muted">Round {room.round}</span>
+          )}
           <span className="rounded-full border border-border bg-surface px-3 py-1 font-mono text-sm">{room.id}</span>
           <ThemeToggle />
         </div>
@@ -149,6 +156,11 @@ function LobbyRoom({ roomId }: { roomId: string }) {
         <Link href={`/r/${roomId}/play`} className="btn-primary">
           {view.viewerDone ? "See your game" : "Continue playing"}
         </Link>
+      ) : room.endedAt ? (
+        // Joining now couldn't score anything; the new-game link (if any) is shown above.
+        <p className="rounded-2xl border border-border bg-surface p-5 text-sm text-muted">
+          This game is over. See the final results below.
+        </p>
       ) : (
         <form onSubmit={join} className="flex flex-col gap-3 rounded-2xl border border-border bg-surface p-5">
           <h2 className="font-semibold">Ready?</h2>
@@ -177,8 +189,10 @@ function LobbyRoom({ roomId }: { roomId: string }) {
         </section>
       )}
 
+      {room.totalRounds && <GameStandings roomId={room.id} />}
+
       <section className="flex flex-col gap-3">
-        <h2 className="font-semibold">Leaderboard</h2>
+        <h2 className="font-semibold">{room.totalRounds ? "This round" : "Leaderboard"}</h2>
         <Leaderboard players={view.players} meId={view.meId} revealed={view.viewerDone} />
       </section>
     </main>

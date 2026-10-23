@@ -1,8 +1,8 @@
 import { withErrors } from "@/lib/api";
 import { store } from "@/lib/store";
-import { startNextRound } from "@/lib/rooms";
+import { endGame, isLastRound, startNextRound } from "@/lib/rooms";
 
-// POST /api/rooms/:id/next { token } -> { nextRoomId }
+// POST /api/rooms/:id/next { token } -> { nextRoomId } or, on a game's last round, { ended: true }
 //
 // Rounds normally roll over by themselves once everyone is done. This lets a
 // player who has finished start the next round anyway, so one friend who
@@ -18,6 +18,10 @@ export const POST = withErrors(async function POST(req: Request, ctx: RouteConte
     return Response.json({ error: "Finish or give up this round first" }, { status: 409 });
   }
   if (room.nextRoomId) return Response.json({ nextRoomId: room.nextRoomId });
+  if (isLastRound(room)) {
+    await endGame(room.id); // "End game now": anyone still playing scores 0 for this round
+    return Response.json({ ended: true });
+  }
 
   try {
     const nextRoomId = await startNextRound(room.id);

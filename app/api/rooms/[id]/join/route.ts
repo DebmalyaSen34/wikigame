@@ -1,8 +1,11 @@
 import type { Player } from "@/lib/game";
 import { store } from "@/lib/store";
 import { withErrors } from "@/lib/api";
+import { seriesIdentity } from "@/lib/rooms";
 
-// POST /api/rooms/:id/join { name } -> { token }. The clock starts now.
+// POST /api/rooms/:id/join { name, fromRoomId?, fromToken? } -> { token }. The clock starts now.
+// fromRoomId/fromToken (the player's token in the previous round) keep their
+// points together across a game's rounds.
 export const POST = withErrors(async function POST(req: Request, ctx: RouteContext<"/api/rooms/[id]/join">) {
   const { id } = await ctx.params;
   const room = await store.getRoom(id.toUpperCase());
@@ -22,6 +25,12 @@ export const POST = withErrors(async function POST(req: Request, ctx: RouteConte
     clicks: 0,
     status: "playing",
     startedAt: Date.now(),
+    seriesPlayerId: await seriesIdentity(
+      room,
+      name,
+      body.fromRoomId ? String(body.fromRoomId) : undefined,
+      body.fromToken ? String(body.fromToken) : undefined,
+    ),
   };
   await store.savePlayer(room.id, player);
   return Response.json({ token: player.token });

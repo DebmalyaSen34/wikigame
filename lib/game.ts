@@ -56,6 +56,9 @@ export type Room = {
   prevRoomId?: string;
   nextRoomId?: string; // set once the next round has been created
   usedPages?: string[]; // start and target pages of every round in this series so far, this one included
+  seriesId?: string; // id of the game's first round; shared by all its rounds
+  totalRounds?: number; // rounds in this game; missing on older rooms (= endless rounds)
+  endedAt?: number; // set on the last round once the game is over
   start: string;
   end: string;
   startInfo: PageInfo;
@@ -77,6 +80,7 @@ export type Player = {
   status: PlayerStatus;
   startedAt: number;
   finishedAt?: number;
+  seriesPlayerId?: string; // the same person across a game's rounds (their id in the round they first joined)
 };
 
 export type PublicPlayer = {

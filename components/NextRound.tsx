@@ -11,7 +11,9 @@ const COUNTDOWN_S = 5;
 const NUDGE_AFTER_MS = 12_000; // if the server hasn't set up the next round by now, ask it again
 
 // Rolls everyone into the next round: once all players are done the server
-// creates it, and this counts down and joins it under the same name.
+// creates it, and this counts down and joins it under the same name. On a
+// game's last round it waits for the final results instead, then offers a
+// new game.
 export function NextRound({
   view,
   myName,
@@ -30,14 +32,19 @@ export function NextRound({
   const stillPlaying = players.filter((p) => p.status === "playing").length;
   const done = myStatus !== undefined && myStatus !== "playing";
   const everyoneDone = players.length > 0 && stillPlaying === 0;
+  const lastRound = !!room.totalRounds && round >= room.totalRounds;
+  const ended = !!room.endedAt;
+  const nextLabel = lastRound ? "New game" : `Round ${round + 1}`;
 
+  // Next round now; on the last round, "end game now"; after the game, a rematch.
   async function startNow() {
     const token = getToken(room.id);
     if (!token) return;
     setStarting(true);
     setError(null);
     try {
-      const res = await api<{ nextRoomId: string | null }>(`/api/rooms/${room.id}/next`, { json: { token } });
+      const path = ended ? "rematch" : "next";
+      const res = await api<{ nextRoomId?: string | null }>(`/api/rooms/${room.id}/${path}`, { json: { token } });
       if (res.nextRoomId) setStartedId(res.nextRoomId);
     } catch (e) {
       setError((e as Error).message);
@@ -49,7 +56,7 @@ export function NextRound({
   // Everyone's done but no next round yet: normally the server is already on
   // it; if it still hasn't appeared after a while, ask again.
   useEffect(() => {
-    if (!done || !everyoneDone || nextId) return;
+    if (!done || !everyoneDone || nextId || ended) return;
     const t = setTimeout(() => {
       const token = getToken(room.id);
       if (!token) return;
@@ -59,28 +66,76 @@ export function NextRound({
       );
     }, NUDGE_AFTER_MS);
     return () => clearTimeout(t);
-  }, [done, everyoneDone, nextId, room.id]);
+  }, [done, everyoneDone, nextId, ended, room.id]);
 
   // Someone who never joined this round just gets a link.
   if (myStatus === undefined) {
     return nextId ? (
       <Link href={`/r/${nextId}`} className="btn-secondary self-start">
-        Round {round + 1} is ready →
+        {nextLabel} is ready →
       </Link>
     ) : null;
   }
 
   // Still racing while others moved on: don't interrupt, just say so.
   if (!done) {
+    if (ended && !nextId) {
+      return (
+        <p className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-muted">
+          The game has ended, so finishing this round won&apos;t add points.
+        </p>
+      );
+    }
     return nextId ? (
       <p className="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-muted">
-        Round {round + 1} has started. Finish this one first, or{" "}
-        <JoinLink nextId={nextId} name={myName} label="jump in now" />.
+        {nextLabel} has started. Finish this one first, or{" "}
+        <JoinLink fromRoomId={room.id} nextId={nextId} name={myName} label="jump in now" />.
       </p>
     ) : null;
   }
 
-  if (nextId) return <Countdown key={nextId} nextId={nextId} name={myName} round={round + 1} />;
+  if (nextId) {
+    return <Countdown key={nextId} fromRoomId={room.id} nextId={nextId} name={myName} label={nextLabel} />;
+  }
+
+  if (ended) {
+    return (
+      <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-4 text-sm">
+        <p className="font-medium">That was the last round. Final results are below.</p>
+        <button onClick={startNow} disabled={starting} className="btn-primary gap-2 self-start">
+          {starting && <Spinner />}
+          {starting ? "Picking pages…" : "Play another game"}
+        </button>
+        {error && <p className="text-danger">{error}</p>}
+      </div>
+    );
+  }
+
+  if (lastRound) {
+    return (
+      <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-4 text-sm">
+        {everyoneDone ? (
+          <p className="flex items-center gap-2 font-medium">
+            <Spinner /> Everyone&apos;s done. Adding up the final scores…
+          </p>
+        ) : (
+          <>
+            <p>
+              <span className="font-medium">Last round!</span>{" "}
+              <span className="text-muted">
+                Final results when everyone&apos;s done ({stillPlaying} still playing).
+              </span>
+            </p>
+            <button onClick={startNow} disabled={starting} className="btn-secondary gap-2 self-start">
+              {starting && <Spinner />}
+              {starting ? "Ending…" : "End game now"}
+            </button>
+          </>
+        )}
+        {error && <p className="text-danger">{error}</p>}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-border bg-surface p-4 text-sm">
@@ -107,7 +162,8 @@ export function NextRound({
   );
 }
 
-function useJoin(nextId: string, name?: string) {
+// Joins `nextId` as the same person as in `fromRoomId`, so points stay together.
+function useJoin(fromRoomId: string, nextId: string, name?: string) {
   const router = useRouter();
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -117,7 +173,7 @@ function useJoin(nextId: string, name?: string) {
     try {
       if (!getToken(nextId)) {
         const { token } = await api<{ token: string }>(`/api/rooms/${nextId}/join`, {
-          json: { name: name || "Player" },
+          json: { name: name || "Player", fromRoomId, fromToken: getToken(fromRoomId) },
         });
         setToken(nextId, token);
       }
@@ -130,8 +186,8 @@ function useJoin(nextId: string, name?: string) {
   return { join, joining, error };
 }
 
-function JoinLink({ nextId, name, label }: { nextId: string; name?: string; label: string }) {
-  const { join, joining } = useJoin(nextId, name);
+function JoinLink({ fromRoomId, nextId, name, label }: { fromRoomId: string; nextId: string; name?: string; label: string }) {
+  const { join, joining } = useJoin(fromRoomId, nextId, name);
   return (
     <button onClick={join} disabled={joining} className="font-medium text-accent underline-offset-2 hover:underline">
       {joining ? "joining…" : label}
@@ -139,8 +195,18 @@ function JoinLink({ nextId, name, label }: { nextId: string; name?: string; labe
   );
 }
 
-function Countdown({ nextId, name, round }: { nextId: string; name?: string; round: number }) {
-  const { join, joining, error } = useJoin(nextId, name);
+function Countdown({
+  fromRoomId,
+  nextId,
+  name,
+  label,
+}: {
+  fromRoomId: string;
+  nextId: string;
+  name?: string;
+  label: string; // "Round 3" or "New game"
+}) {
+  const { join, joining, error } = useJoin(fromRoomId, nextId, name);
   const [left, setLeft] = useState(COUNTDOWN_S);
   const [stayed, setStayed] = useState(false);
   const [pair, setPair] = useState<{ start: string; end: string } | null>(null);
@@ -171,13 +237,13 @@ function Countdown({ nextId, name, round }: { nextId: string; name?: string; rou
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-accent/50 bg-accent/10 p-4 text-sm">
       <div>
-        <p className="font-semibold">Round {round} is ready</p>
+        <p className="font-semibold">{label} is ready</p>
         <p className="text-muted">{pair ? `${pair.start} → ${pair.end}` : "Loading the pages…"}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <button onClick={join} disabled={joining} className="btn-primary gap-2">
           {joining && <Spinner />}
-          {joining ? "Joining…" : stayed ? `Join round ${round}` : `Starting in ${Math.max(0, left)}…`}
+          {joining ? "Joining…" : stayed ? `Join ${label.toLowerCase()}` : `Starting in ${Math.max(0, left)}…`}
         </button>
         {!stayed && !joining && (
           <button onClick={() => setStayed(true)} className="btn-secondary">

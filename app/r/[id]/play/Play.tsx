@@ -11,6 +11,7 @@ import { RouteGraph, type GraphPlayer } from "@/components/RouteGraph";
 import { DifficultyBadge } from "@/components/DifficultyInfo";
 import { ArticleSkeleton, ProgressBar } from "@/components/Spinner";
 import { NextRound } from "@/components/NextRound";
+import { GameStandings } from "@/components/GameStandings";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { useResolvedTheme } from "@/lib/theme";
 import { applyContrastFix } from "@/lib/contrastFix";
@@ -292,7 +293,13 @@ function PlayRoom({ roomId }: { roomId: string }) {
               }`}
             >
               <p className="font-serif text-2xl font-semibold">
-                {(room?.round ?? 1) > 1 && <span className="mr-2 text-base font-normal text-muted">Round {room?.round}</span>}
+                {room?.totalRounds ? (
+                  <span className="mr-2 text-base font-normal text-muted">
+                    Round {room.round ?? 1} of {room.totalRounds}
+                  </span>
+                ) : (
+                  (room?.round ?? 1) > 1 && <span className="mr-2 text-base font-normal text-muted">Round {room?.round}</span>
+                )}
                 {me.status === "finished"
                   ? `You made it in ${me.clicks} click${me.clicks === 1 ? "" : "s"}!`
                   : "You gave up this round."}
@@ -309,6 +316,11 @@ function PlayRoom({ roomId }: { roomId: string }) {
               {room && (
                 <div className="mt-2">
                   <RouteGraph players={graphPlayers} start={room.start} end={room.end} meId={me.id} />
+                </div>
+              )}
+              {room?.totalRounds && (
+                <div className="mt-2">
+                  <GameStandings roomId={roomId} />
                 </div>
               )}
               <Link href={`/r/${roomId}`} className="btn-primary mt-2 self-start">

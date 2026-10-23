@@ -1,6 +1,7 @@
 // Server-only: creating rooms, and chaining rounds so a group can keep playing.
 
-import { makeRoomCode, type Difficulty, type Room } from "./game";
+import { makeRoomCode, type Difficulty, type Player, type Room } from "./game";
+import { scoreRound, standings, winners, type RoundScore, type Standing } from "./scoring";
 import { store } from "./store";
 import { generatePair, measure } from "./distance";
 import { getPageInfo, randomPopular, resolveTitle } from "./wiki";
@@ -16,6 +17,8 @@ type NewRoom = {
   round?: number;
   prevRoomId?: string;
   avoid?: string[]; // pages this group already played; see generatePair
+  seriesId?: string; // set for rounds 2+ of a game
+  totalRounds?: number;
 };
 
 // With both pages blank, picks a pair that matches the difficulty and records
@@ -58,6 +61,8 @@ export async function createRoom(input: NewRoom): Promise<Room> {
     round: input.round ?? 1,
     prevRoomId: input.prevRoomId,
     usedPages: [...usedBefore, start, end],
+    seriesId: input.seriesId ?? id,
+    totalRounds: input.totalRounds,
     start,
     end,
     startInfo,
@@ -69,6 +74,15 @@ export async function createRoom(input: NewRoom): Promise<Room> {
   return room;
 }
 
+export const isLastRound = (room: Room) => !!room.totalRounds && (room.round ?? 1) >= room.totalRounds;
+
+// Locks in the final results. Anyone still playing the last round can carry on,
+// but finishes after this moment don't score.
+export async function endGame(roomId: string): Promise<void> {
+  const room = await store.getRoom(roomId);
+  if (room && !room.endedAt) await store.saveRoom({ ...room, endedAt: Date.now() });
+}
+
 export async function everyoneDone(roomId: string): Promise<boolean> {
   const players = await store.listPlayers(roomId);
   return players.length > 0 && players.every((p) => p.status !== "playing");
@@ -77,10 +91,15 @@ export async function everyoneDone(roomId: string): Promise<boolean> {
 // Creates the next round (same difficulty, fresh random pages) and links it
 // from this room. Safe to call from several requests at once: a lock lets
 // exactly one of them do the work. Returns the next room's id once it exists.
+// On the game's last round this ends the game instead and returns null.
 export async function startNextRound(roomId: string): Promise<string | null> {
   const room = await store.getRoom(roomId);
   if (!room) return null;
   if (room.nextRoomId) return room.nextRoomId;
+  if (isLastRound(room)) {
+    await endGame(room.id);
+    return null;
+  }
 
   const lock = `next:${room.id}`;
   if (!(await store.claim(lock, 60))) return null; // another request is already creating it
@@ -94,10 +113,117 @@ export async function startNextRound(roomId: string): Promise<string | null> {
       round: (room.round ?? 1) + 1,
       prevRoomId: room.id,
       avoid: room.usedPages ?? [room.start, room.end],
+      seriesId: room.seriesId ?? room.id,
+      totalRounds: room.totalRounds,
     });
     await store.saveRoom({ ...(fresh ?? room), nextRoomId: next.id });
     return next.id;
   } finally {
     await store.release(lock);
   }
+}
+
+// After a game ends: round 1 of a new game with the same settings, linked from
+// the last round so everyone still on the results screen is offered it.
+export async function startRematch(roomId: string, createdBy: string): Promise<string | null> {
+  const room = await store.getRoom(roomId);
+  if (!room?.endedAt) return null;
+  if (room.nextRoomId) return room.nextRoomId;
+
+  const lock = `next:${room.id}`;
+  if (!(await store.claim(lock, 60))) return null;
+  try {
+    const fresh = await store.getRoom(room.id);
+    if (fresh?.nextRoomId) return fresh.nextRoomId;
+    const next = await createRoom({
+      difficulty: room.difficulty ?? "normal",
+      createdBy,
+      round: 1,
+      totalRounds: room.totalRounds,
+      prevRoomId: room.id,
+      avoid: room.usedPages ?? [room.start, room.end],
+    });
+    await store.saveRoom({ ...(fresh ?? room), nextRoomId: next.id });
+    return next.id;
+  } finally {
+    await store.release(lock);
+  }
+}
+
+// Who a new player in `room` is across the game: the same person as the
+// player whose token they held in the previous round, or (for someone who
+// rejoined by hand) a previous-round player with the same name not already here.
+export async function seriesIdentity(
+  room: Room,
+  name: string,
+  fromRoomId?: string,
+  fromToken?: string,
+): Promise<string | undefined> {
+  if (!room.prevRoomId || (room.round ?? 1) === 1) return undefined;
+  const taken = new Set((await store.listPlayers(room.id)).map((p) => p.seriesPlayerId ?? p.id));
+  const keyOf = (p: Player) => p.seriesPlayerId ?? p.id;
+  if (fromRoomId === room.prevRoomId && fromToken) {
+    const prev = await store.getPlayer(room.prevRoomId, fromToken);
+    if (prev && !taken.has(keyOf(prev))) return keyOf(prev);
+  }
+  const wanted = name.trim().toLowerCase();
+  const match = (await store.listPlayers(room.prevRoomId)).find(
+    (p) => p.name.trim().toLowerCase() === wanted && !taken.has(keyOf(p)),
+  );
+  return match ? keyOf(match) : undefined;
+}
+
+export type GameView = {
+  totalRounds: number;
+  round: number;
+  ended: boolean;
+  rounds: { roomId: string; round: number; start: string; end: string; scores: RoundScore[] }[];
+  standings: Standing[];
+  winners: string[]; // keys
+  meKey?: string;
+};
+
+// Scores for every round of this room's game so far, oldest first.
+export async function gameView(roomId: string, token?: string | null): Promise<GameView | null> {
+  const current = await store.getRoom(roomId);
+  if (!current?.totalRounds) return null; // older rooms: no game, just endless rounds
+
+  const chain: Room[] = [current];
+  while (chain.length < current.totalRounds) {
+    const prevId = chain[0].prevRoomId;
+    const prev = prevId ? await store.getRoom(prevId) : null;
+    if (!prev || (prev.seriesId ?? prev.id) !== (current.seriesId ?? current.id)) break;
+    chain.unshift(prev);
+  }
+
+  const last = chain.at(-1)!;
+  const rounds = await Promise.all(
+    chain.map(async (room) => {
+      const players = await store.listPlayers(room.id);
+      const entries = players.map((p) => ({ ...p, key: p.seriesPlayerId ?? p.id }));
+      return {
+        roomId: room.id,
+        round: room.round ?? 1,
+        start: room.start,
+        end: room.end,
+        scores: scoreRound(entries, room.id === last.id ? last.endedAt : undefined),
+      };
+    }),
+  );
+
+  let meKey: string | undefined;
+  if (token) {
+    const me = await store.getPlayer(current.id, token);
+    if (me) meKey = me.seriesPlayerId ?? me.id;
+  }
+  const table = standings(rounds.map((r) => r.scores));
+  return {
+    totalRounds: current.totalRounds,
+    round: current.round ?? 1,
+    ended: !!last.endedAt,
+    rounds,
+    standings: table,
+    winners: last.endedAt ? winners(table).map((s) => s.key) : [],
+    meKey,
+  };
 }

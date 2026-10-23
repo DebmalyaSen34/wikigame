@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, getSavedName, saveName, useBrowserValue } from "@/lib/client";
 import { DIFFICULTIES, type Difficulty } from "@/lib/game";
+import { DEFAULT_ROUNDS, ROUND_OPTIONS } from "@/lib/scoring";
 import { Spinner } from "@/components/Spinner";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
@@ -15,6 +16,7 @@ export default function Home() {
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [difficulty, setDifficulty] = useState<Difficulty>("normal");
+  const [rounds, setRounds] = useState(DEFAULT_ROUNDS);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [rolling, setRolling] = useState<"start" | "end" | null>(null);
@@ -42,7 +44,7 @@ export default function Home() {
     setError(null);
     saveName(name.trim());
     try {
-      const { id } = await api<{ id: string }>("/api/rooms", { json: { name, difficulty, start, end } });
+      const { id } = await api<{ id: string }>("/api/rooms", { json: { name, difficulty, rounds, start, end } });
       router.push(`/r/${id}`);
     } catch (e) {
       setError((e as Error).message);
@@ -102,6 +104,29 @@ export default function Home() {
           </div>
           <p className="text-sm text-muted">
             {DIFFICULTIES[difficulty].pages}. {DIFFICULTIES[difficulty].rules.join(". ")}.
+          </p>
+        </fieldset>
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="mb-1.5 text-sm font-medium">Rounds</legend>
+          <div className="grid grid-cols-5 gap-2" role="radiogroup">
+            {ROUND_OPTIONS.map((n) => (
+              <button
+                key={n}
+                type="button"
+                role="radio"
+                aria-checked={rounds === n}
+                onClick={() => setRounds(n)}
+                className={`h-10 rounded-lg border text-sm font-medium transition-colors ${
+                  rounds === n ? "border-accent bg-accent text-accent-ink" : "border-border hover:bg-border/40"
+                }`}
+              >
+                {n}
+              </button>
+            ))}
+          </div>
+          <p className="text-sm text-muted">
+            {rounds === 1 ? "A single round." : `${rounds} rounds.`} Points for each finish, and the most points wins the
+            game.
           </p>
         </fieldset>
         <Field label="From">
