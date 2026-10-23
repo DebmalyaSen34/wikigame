@@ -15,6 +15,7 @@ type NewRoom = {
   end?: string;
   round?: number;
   prevRoomId?: string;
+  avoid?: string[]; // pages this group already played; see generatePair
 };
 
 // With both pages blank, picks a pair that matches the difficulty and records
@@ -27,10 +28,12 @@ export async function createRoom(input: NewRoom): Promise<Room> {
 
   let start: string | null, end: string | null;
   let par: Room["par"] = null;
+  let usedBefore = input.avoid ?? [];
   if (!startInput && !endInput) {
-    const pair = await generatePair(difficulty);
-    if (!pair) throw new RoomInputError("Couldn't find a fitting pair of pages in time, try again");
-    ({ start, end, par } = pair);
+    const generated = await generatePair(difficulty, usedBefore);
+    if (!generated) throw new RoomInputError("Couldn't find a fitting pair of pages in time, try again");
+    ({ start, end, par } = generated.pair);
+    if (generated.reset) usedBefore = []; // every page has had a turn; start the list over
   } else {
     const pick = (role: "start" | "end", exclude: string) =>
       difficulty === "hard" ? randomHardPage(role, [exclude]) : randomPopular([exclude]);
@@ -54,6 +57,7 @@ export async function createRoom(input: NewRoom): Promise<Room> {
     par,
     round: input.round ?? 1,
     prevRoomId: input.prevRoomId,
+    usedPages: [...usedBefore, start, end],
     start,
     end,
     startInfo,
@@ -89,6 +93,7 @@ export async function startNextRound(roomId: string): Promise<string | null> {
       createdBy: room.createdBy,
       round: (room.round ?? 1) + 1,
       prevRoomId: room.id,
+      avoid: room.usedPages ?? [room.start, room.end],
     });
     await store.saveRoom({ ...(fresh ?? room), nextRoomId: next.id });
     return next.id;

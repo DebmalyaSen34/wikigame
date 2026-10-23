@@ -55,6 +55,7 @@ export type Room = {
   round?: number; // 1 for the first game; missing on older rooms
   prevRoomId?: string;
   nextRoomId?: string; // set once the next round has been created
+  usedPages?: string[]; // start and target pages of every round in this series so far, this one included
   start: string;
   end: string;
   startInfo: PageInfo;
