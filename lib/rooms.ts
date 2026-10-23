@@ -3,7 +3,8 @@
 import { makeRoomCode, type Difficulty, type Room } from "./game";
 import { store } from "./store";
 import { generatePair, measure } from "./distance";
-import { getPageInfo, randomArticle, randomPopular, resolveTitle } from "./wiki";
+import { getPageInfo, randomPopular, resolveTitle } from "./wiki";
+import { randomHardPage } from "./hardPool";
 
 export class RoomInputError extends Error {}
 
@@ -31,10 +32,11 @@ export async function createRoom(input: NewRoom): Promise<Room> {
     if (!pair) throw new RoomInputError("Couldn't find a fitting pair of pages in time, try again");
     ({ start, end, par } = pair);
   } else {
-    const pick = (exclude: string) => (difficulty === "hard" ? randomArticle() : randomPopular([exclude]));
+    const pick = (role: "start" | "end", exclude: string) =>
+      difficulty === "hard" ? randomHardPage(role, [exclude]) : randomPopular([exclude]);
     [start, end] = await Promise.all([
-      resolveTitle(startInput || (await pick(endInput))),
-      resolveTitle(endInput || (await pick(startInput))),
+      resolveTitle(startInput || pick("start", endInput)),
+      resolveTitle(endInput || pick("end", startInput)),
     ]);
     if (!start) throw new RoomInputError(`No Wikipedia article called "${startInput}"`);
     if (!end) throw new RoomInputError(`No Wikipedia article called "${endInput}"`);

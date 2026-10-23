@@ -203,19 +203,6 @@ export async function getPageInfo(title: string): Promise<PageInfo> {
   }
 }
 
-export async function randomArticle(): Promise<string> {
-  const params = new URLSearchParams({
-    action: "query",
-    list: "random",
-    rnnamespace: "0",
-    rnlimit: "1",
-    format: "json",
-    formatversion: "2",
-  });
-  const data = await wikiFetch(`${API}?${params}`);
-  return normalizeTitle(data.query.random[0].title);
-}
-
 // Fully random articles are often obscure stubs, so by default games pick
 // from well-known topics that are reachable in a handful of clicks.
 export const POPULAR_TITLES = [

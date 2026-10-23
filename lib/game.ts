@@ -34,7 +34,7 @@ export const DIFFICULTIES: Record<
   },
   hard: {
     label: "Hard",
-    pages: "Random, often obscure pages, at least 3 clicks apart",
+    pages: "Everyday pages everyone knows, at least 3 clicks apart",
     rules: ["No Back button: every click is final"],
     backAllowed: false,
     backCosts: true,

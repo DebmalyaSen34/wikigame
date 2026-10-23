@@ -9,6 +9,7 @@
 
 import type { Difficulty, Par } from "./game";
 import { API, POPULAR_TITLES, normalizeTitle, wikiFetch } from "./wiki";
+import { HARD_STARTS, HARD_TARGETS } from "./hardPool";
 
 type LinkSet = { titles: Set<string>; complete: boolean };
 
@@ -98,20 +99,6 @@ function shuffle<T>(xs: T[]): T[] {
   return a;
 }
 
-async function randomTitles(n: number): Promise<string[]> {
-  const qs = new URLSearchParams({
-    action: "query",
-    list: "random",
-    rnnamespace: "0",
-    rnfilterredir: "nonredirects",
-    rnlimit: String(n),
-    format: "json",
-    formatversion: "2",
-  });
-  const data = await wikiFetch(`${API}?${qs}`);
-  return data.query.random.map((r: { title: string }) => normalizeTitle(r.title));
-}
-
 export type Pair = { start: string; end: string; par: Par | null };
 
 const DEADLINE_MS = 20_000;
@@ -143,33 +130,26 @@ async function normalPair(deadline: number): Promise<Pair | null> {
   return null;
 }
 
-// Hard: random (often obscure) pages with no route shorter than 3 clicks.
-// The start needs enough links to get going, and the target must be linked
-// from enough pages to be findable, but few enough that we can check all of them.
+// Hard: everyday pages everyone knows, with no route shorter than 3 clicks.
+// Both lists are vetted (lib/hardPool.ts) so the start's links and the
+// target's incoming links can be fetched completely, which is what makes
+// "at least 3 clicks" a proof rather than a guess.
 async function hardPair(deadline: number): Promise<Pair | null> {
-  let start: string | null = null;
-  let out: LinkSet | null = null;
-  while (!start && Date.now() < deadline) {
-    for (const t of await randomTitles(5)) {
-      const o = await outgoingLinks(t, 4);
-      if (o.complete && o.titles.size >= 40) {
-        start = t;
-        out = o;
-        break;
-      }
-    }
-  }
-  if (!start || !out) return null;
-
-  while (Date.now() < deadline) {
-    for (const end of await randomTitles(10)) {
+  const targets = shuffle(HARD_TARGETS);
+  let t = 0;
+  for (const start of shuffle(HARD_STARTS)) {
+    if (Date.now() > deadline) return null;
+    const out = await outgoingLinks(start, 4);
+    if (!out.complete) continue;
+    // A few targets per start; if none is far enough, a different start usually is.
+    for (let tries = 0; tries < 4 && t < targets.length; tries++) {
+      const end = targets[t++];
       if (Date.now() > deadline) return null;
       if (end === start || out.titles.has(end)) continue;
-      const incoming = await incomingLinks(end, 4);
-      if (!incoming.complete || incoming.titles.size < 12) continue;
       const par = await measure(start, end, 4);
       if (par && "atLeast" in par) return { start, end, par };
     }
+    if (t >= targets.length) t = 0;
   }
   return null;
 }

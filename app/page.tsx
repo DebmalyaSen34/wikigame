@@ -23,7 +23,7 @@ export default function Home() {
 
   async function roll(which: "start" | "end") {
     const other = which === "start" ? end : start;
-    const qs = new URLSearchParams({ mode: difficulty === "hard" ? "any" : "popular" });
+    const qs = new URLSearchParams({ mode: difficulty === "hard" ? "hard" : "popular", role: which });
     if (other) qs.append("exclude", other);
     setRolling(which);
     try {
