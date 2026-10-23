@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, getSavedName, saveName, useBrowserValue } from "@/lib/client";
+import { DIFFICULTIES, type Difficulty } from "@/lib/game";
 
 export default function Home() {
   const router = useRouter();
@@ -11,14 +12,14 @@ export default function Home() {
   const name = editedName ?? savedName;
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
-  const [obscure, setObscure] = useState(false);
+  const [difficulty, setDifficulty] = useState<Difficulty>("normal");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function roll(which: "start" | "end") {
     const other = which === "start" ? end : start;
-    const qs = new URLSearchParams({ mode: obscure ? "any" : "popular" });
+    const qs = new URLSearchParams({ mode: difficulty === "hard" ? "any" : "popular" });
     if (other) qs.append("exclude", other);
     try {
       const { title } = await api<{ title: string }>(`/api/random?${qs}`);
@@ -34,7 +35,7 @@ export default function Home() {
     setError(null);
     saveName(name.trim());
     try {
-      const { id } = await api<{ id: string }>("/api/rooms", { json: { name, start, end } });
+      const { id } = await api<{ id: string }>("/api/rooms", { json: { name, difficulty, start, end } });
       router.push(`/r/${id}`);
     } catch (e) {
       setError((e as Error).message);
@@ -69,20 +70,41 @@ export default function Home() {
             className="input"
           />
         </Field>
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="mb-1.5 text-sm font-medium">Difficulty</legend>
+          <div className="grid grid-cols-3 gap-2" role="radiogroup">
+            {(Object.keys(DIFFICULTIES) as Difficulty[]).map((d) => (
+              <button
+                key={d}
+                type="button"
+                role="radio"
+                aria-checked={difficulty === d}
+                onClick={() => setDifficulty(d)}
+                className={`h-10 rounded-lg border text-sm font-medium transition-colors ${
+                  difficulty === d ? "border-accent bg-accent text-accent-ink" : "border-border hover:bg-border/40"
+                }`}
+              >
+                {DIFFICULTIES[d].label}
+              </button>
+            ))}
+          </div>
+          <p className="text-sm text-muted">
+            {DIFFICULTIES[difficulty].pages}. {DIFFICULTIES[difficulty].rules.join(". ")}.
+          </p>
+        </fieldset>
         <Field label="From">
           <TitleInput value={start} onChange={setStart} onRoll={() => roll("start")} />
         </Field>
         <Field label="To">
           <TitleInput value={end} onChange={setEnd} onRoll={() => roll("end")} />
         </Field>
-        <label className="flex items-center gap-2 text-sm text-muted">
-          <input type="checkbox" checked={obscure} onChange={(e) => setObscure(e.target.checked)} />
-          Dice picks any random article (much harder)
-        </label>
-        <p className="text-xs text-muted">Leave a field empty to get a random well-known page.</p>
+        <p className="text-xs text-muted">
+          Leave both empty and we&apos;ll pick two pages that match the difficulty. If you choose pages yourself, the
+          difficulty only sets the rules.
+        </p>
         {error && <p className="text-sm text-danger">{error}</p>}
         <button disabled={busy} className="btn-primary">
-          {busy ? "Creating…" : "Create game"}
+          {busy ? (start || end ? "Creating…" : "Finding two fitting pages…") : "Create game"}
         </button>
       </form>
 

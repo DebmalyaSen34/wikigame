@@ -1,16 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { api, clearToken, getToken, useNow, useRoomView } from "@/lib/client";
-import { formatDuration, type Player } from "@/lib/game";
+import { DIFFICULTIES, formatDuration, parText, type Player } from "@/lib/game";
 import { Leaderboard } from "@/components/Leaderboard";
 import { RouteGraph, type GraphPlayer } from "@/components/RouteGraph";
+import { DifficultyBadge } from "@/components/DifficultyInfo";
 
 type Me = Omit<Player, "token">;
 type Article = { title: string; displayTitle: string; html: string };
-type PlayResponse = { me: Me; article: Article };
+type PlayResponse = { me: Me; article: Article; hints: string[] };
 
 export function Play() {
   const { id } = useParams<{ id: string }>();
@@ -21,6 +22,8 @@ export function Play() {
   const [article, setArticle] = useState<Article | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hints, setHints] = useState<string[]>([]);
+  const contentRef = useRef<HTMLDivElement>(null);
   const now = useNow(me?.status === "playing");
 
   const post = useCallback(
@@ -48,6 +51,7 @@ export function Play() {
     if (!res) return;
     setMe(res.me);
     setArticle(res.article);
+    setHints(res.hints ?? []);
     setLoading(false);
   }, []);
 
@@ -94,6 +98,15 @@ export function Play() {
 
   const room = view?.room;
   const playing = me?.status === "playing";
+  const rules = DIFFICULTIES[room?.difficulty ?? "normal"];
+
+  // Easy mode: mark the links the server says lead toward the target.
+  useEffect(() => {
+    const set = new Set(hints);
+    contentRef.current?.querySelectorAll<HTMLAnchorElement>("a[data-wiki]").forEach((a) => {
+      a.classList.toggle("wg-hint", set.has(a.dataset.wiki!));
+    });
+  }, [article, hints]);
 
   // Everyone whose route this viewer may see, with this player's own entry
   // taken from the fresher play state rather than the polled leaderboard.
@@ -116,6 +129,7 @@ export function Play() {
             <span className="truncate rounded-md bg-target/40 px-2 py-0.5 font-semibold" title={room?.endInfo.description}>
               {room?.end ?? "…"}
             </span>
+            {room && <DifficultyBadge room={room} />}
           </div>
           <div className="flex items-center gap-3 font-mono text-sm tabular-nums">
             <span>
@@ -126,14 +140,16 @@ export function Play() {
           </div>
           {playing && (
             <div className="flex gap-2">
-              <button
-                onClick={() => send("back")}
-                disabled={loading || (me?.stack.length ?? 0) < 2}
-                className="btn-secondary h-9 px-3 text-sm"
-                title="Going back costs a click"
-              >
-                ← Back
-              </button>
+              {rules.backAllowed && (
+                <button
+                  onClick={() => send("back")}
+                  disabled={loading || (me?.stack.length ?? 0) < 2}
+                  className="btn-secondary h-9 px-3 text-sm"
+                  title={rules.backCosts ? "Going back costs a click" : "Going back is free on Easy"}
+                >
+                  ← Back
+                </button>
+              )}
               <button onClick={giveUp} disabled={loading} className="btn-secondary h-9 px-3 text-sm text-danger">
                 Give up
               </button>
@@ -158,6 +174,12 @@ export function Play() {
               <p className="text-sm text-muted">
                 Time {formatDuration(elapsed)} · Route: {me.path.join(" → ")}
               </p>
+              {room && parText(room.par) && (
+                <p className="text-sm text-muted">
+                  {parText(room.par)}
+                  {room.par && "via" in room.par && room.par.via && ` (e.g. ${room.start} → ${room.par.via} → ${room.end})`}
+                </p>
+              )}
               {room && (
                 <div className="mt-2">
                   <RouteGraph players={graphPlayers} start={room.start} end={room.end} meId={me.id} />
@@ -173,6 +195,13 @@ export function Play() {
             <p className="mb-4 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>
           )}
 
+          {playing && rules.hints && (
+            <p className="mb-4 text-sm text-muted">
+              <span className="wg-hint-sample">Highlighted links</span> go to the target or to a page that links to it.
+              {hints.length === 0 && " None on this page — try somewhere else."}
+            </p>
+          )}
+
           {article ? (
             <article className={`transition-opacity ${loading ? "opacity-40" : ""}`}>
               <h1
@@ -180,6 +209,7 @@ export function Play() {
                 dangerouslySetInnerHTML={{ __html: article.displayTitle }}
               />
               <div
+                ref={contentRef}
                 className="wiki"
                 onClick={onArticleClick}
                 dangerouslySetInnerHTML={{ __html: article.html }}

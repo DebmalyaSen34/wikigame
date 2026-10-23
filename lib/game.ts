@@ -7,8 +7,51 @@ export type PageInfo = {
   thumbnail?: string;
 };
 
+export type Difficulty = "easy" | "normal" | "hard";
+
+// What we could prove about the shortest route when the room was made.
+export type Par = { clicks: 1 | 2; via?: string } | { atLeast: 3 };
+
+export const DIFFICULTIES: Record<
+  Difficulty,
+  { label: string; pages: string; rules: string[]; backAllowed: boolean; backCosts: boolean; hints: boolean }
+> = {
+  easy: {
+    label: "Easy",
+    pages: "Well-known pages, exactly 2 clicks apart",
+    rules: ["Back is free", "Links to pages that mention the target are highlighted"],
+    backAllowed: true,
+    backCosts: false,
+    hints: true,
+  },
+  normal: {
+    label: "Normal",
+    pages: "Well-known pages that aren't directly linked",
+    rules: ["Back costs a click"],
+    backAllowed: true,
+    backCosts: true,
+    hints: false,
+  },
+  hard: {
+    label: "Hard",
+    pages: "Random, often obscure pages, at least 3 clicks apart",
+    rules: ["No Back button: every click is final"],
+    backAllowed: false,
+    backCosts: true,
+    hints: false,
+  },
+};
+
+export function parText(par: Par | null | undefined): string | null {
+  if (!par) return null;
+  if ("atLeast" in par) return "No route shorter than 3 clicks exists";
+  return par.clicks === 1 ? "Can be done in 1 click" : "Can be done in 2 clicks";
+}
+
 export type Room = {
   id: string;
+  difficulty?: Difficulty; // missing on rooms made before difficulties existed (= normal)
+  par?: Par | null;
   start: string;
   end: string;
   startInfo: PageInfo;

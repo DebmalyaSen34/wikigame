@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { api, getSavedName, getToken, saveName, setToken, useBrowserValue, useRoomView } from "@/lib/client";
 import { Leaderboard } from "@/components/Leaderboard";
 import { PageCard } from "@/components/PageCard";
+import { DifficultyInfo } from "@/components/DifficultyInfo";
 import { RouteGraph, type GraphPlayer } from "@/components/RouteGraph";
 
 export function Lobby() {
@@ -77,6 +78,7 @@ export function Lobby() {
         </span>
         <PageCard label="To" info={room.endInfo} highlight />
       </div>
+      <DifficultyInfo room={room} revealRoute={view.viewerDone} />
       {room.endInfo.extract && (
         <p className="rounded-xl border border-border bg-surface p-4 font-serif text-sm leading-relaxed text-muted">
           <span className="font-sans font-medium text-foreground">About the target: </span>

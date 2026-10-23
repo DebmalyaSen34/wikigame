@@ -28,7 +28,7 @@ Serverless functions don't share a disk, so add a Redis database:
 
 1. Create a free [Upstash Redis](https://upstash.com) database (or add one from the Vercel Marketplace).
 2. Set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` (Vercel's `KV_REST_API_URL` / `KV_REST_API_TOKEN` also work).
-3. Optionally set `WIKI_USER_AGENT` to something with your contact info, as Wikimedia asks of API clients.
+3. Optionally set `WIKI_USER_AGENT` (it must include a contact URL or email: Wikimedia limits clients without one to 10 requests/minute, versus 200 with one).
 
 ## Code map
 

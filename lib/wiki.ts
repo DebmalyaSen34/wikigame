@@ -3,12 +3,13 @@
 
 import type { PageInfo } from "./game";
 
-const API = "https://en.wikipedia.org/w/api.php";
+export const API = "https://en.wikipedia.org/w/api.php";
 const REST = "https://en.wikipedia.org/api/rest_v1";
 
-// Wikimedia asks API clients to send a descriptive User-Agent with contact info.
+// Wikimedia rate-limits clients without contact info in their User-Agent to
+// 10 requests/minute; a compliant one (with a URL or email) gets 200/minute.
 const USER_AGENT =
-  process.env.WIKI_USER_AGENT ?? "WikigameWithFriends/0.1 (personal hobby project)";
+  process.env.WIKI_USER_AGENT ?? "WikiRace/0.1 (https://github.com/DebmalyaSen34/wikigame)";
 
 export type Article = {
   title: string; // canonical title, after redirects
@@ -27,10 +28,50 @@ export function normalizeTitle(raw: string): string {
   return t;
 }
 
-async function wikiFetch(url: string) {
-  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT, "Api-User-Agent": USER_AGENT } });
-  if (!res.ok) throw new Error(`Wikipedia responded ${res.status}`);
-  return res.json();
+// Wikimedia's rules: at most 3 concurrent requests and 200/minute, and honour
+// Retry-After on a 429. Picking a difficulty-matched pair takes dozens of
+// lookups, so every request goes through this gate (per server process).
+const MAX_CONCURRENT = 2;
+const MAX_PER_MINUTE = 180;
+let active = 0;
+const waiting: (() => void)[] = [];
+const recent: number[] = [];
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (active < MAX_CONCURRENT) active++;
+  else await new Promise<void>((r) => waiting.push(r)); // slot is handed over by the finishing request
+  try {
+    for (;;) {
+      while (recent.length && Date.now() - recent[0] > 60_000) recent.shift();
+      if (recent.length < MAX_PER_MINUTE) break;
+      await sleep(60_000 - (Date.now() - recent[0]) + 10);
+    }
+    recent.push(Date.now());
+    return await fn();
+  } finally {
+    const next = waiting.shift();
+    if (next) next();
+    else active--;
+  }
+}
+
+export async function wikiFetch(url: string) {
+  for (let attempt = 0; ; attempt++) {
+    const res = await withSlot(() =>
+      fetch(url, { headers: { "User-Agent": USER_AGENT, "Api-User-Agent": USER_AGENT } }),
+    );
+    if ((res.status === 429 || res.status === 503) && attempt < 2) {
+      // Wikimedia asks for at least 5s when no Retry-After is given.
+      const retryAfter = Number(res.headers.get("retry-after"));
+      await sleep(Math.min(15_000, retryAfter > 0 ? retryAfter * 1000 : 5000));
+      continue;
+    }
+    if (res.status === 429) throw new Error("Wikipedia is rate-limiting us, try again in a minute");
+    if (!res.ok) throw new Error(`Wikipedia responded ${res.status}`);
+    return res.json();
+  }
 }
 
 // Small in-memory cache: every player in a room loads the same few pages, and
