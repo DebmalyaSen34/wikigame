@@ -17,6 +17,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/rooms/[id]/join
     name,
     path: [room.start],
     stack: [room.start],
+    backAt: [],
     clicks: 0,
     status: "playing",
     startedAt: Date.now(),

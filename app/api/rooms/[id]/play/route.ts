@@ -42,6 +42,7 @@ export async function POST(req: Request, ctx: RouteContext<"/api/rooms/[id]/play
       if (player.stack.length < 2) return Response.json({ error: "Nowhere to go back to" }, { status: 400 });
       player.stack.pop();
       player.path.push(player.stack.at(-1)!);
+      player.backAt = [...(player.backAt ?? []), player.path.length - 1];
       player.clicks++;
       await store.savePlayer(room.id, player);
     } else if (action === "giveup") {

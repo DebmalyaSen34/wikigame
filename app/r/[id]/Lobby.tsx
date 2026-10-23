@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { api, getSavedName, getToken, saveName, setToken, useBrowserValue, useRoomView } from "@/lib/client";
 import { Leaderboard } from "@/components/Leaderboard";
 import { PageCard } from "@/components/PageCard";
+import { RouteGraph, type GraphPlayer } from "@/components/RouteGraph";
 
 export function Lobby() {
   const { id } = useParams<{ id: string }>();
@@ -57,9 +58,11 @@ export function Lobby() {
   if (!view) return <main className="flex flex-1 items-center justify-center text-muted">Loading room…</main>;
 
   const { room } = view;
+  // Only includes routes this viewer is allowed to see (their own, or everyone's once they're done).
+  const routes = view.players.filter((p) => p.path) as GraphPlayer[];
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-4 py-10">
+    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-10">
       <div className="flex items-center justify-between gap-3">
         <Link href="/" className="font-serif text-2xl font-semibold">
           WikiRace
@@ -114,6 +117,13 @@ export function Lobby() {
           </div>
           {joinError && <p className="text-sm text-danger">{joinError}</p>}
         </form>
+      )}
+
+      {routes.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-semibold">{routes.length > 1 ? "Everyone's routes" : "Your route"}</h2>
+          <RouteGraph players={routes} start={room.start} end={room.end} meId={view.meId} />
+        </section>
       )}
 
       <section className="flex flex-col gap-3">

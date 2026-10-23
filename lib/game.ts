@@ -25,6 +25,7 @@ export type Player = {
   name: string;
   path: string[]; // every page visited, in order (back moves included)
   stack: string[]; // pages the Back button can return to
+  backAt?: number[]; // indexes in `path` that were reached with Back rather than a link
   clicks: number;
   status: PlayerStatus;
   startedAt: number;
@@ -40,6 +41,7 @@ export type PublicPlayer = {
   finishedAt?: number;
   current?: string; // only revealed once the viewer is done, to avoid spoilers
   path?: string[];
+  backAt?: number[];
 };
 
 export type RoomView = {
@@ -81,7 +83,7 @@ export function toPublic(p: Player, reveal: boolean): PublicPlayer {
     startedAt: p.startedAt,
     finishedAt: p.finishedAt,
   };
-  return reveal ? { ...base, current: p.path.at(-1), path: p.path } : base;
+  return reveal ? { ...base, current: p.path.at(-1), path: p.path, backAt: p.backAt ?? [] } : base;
 }
 
 export function formatDuration(ms: number): string {

@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { api, clearToken, getToken, useNow, useRoomView } from "@/lib/client";
 import { formatDuration, type Player } from "@/lib/game";
 import { Leaderboard } from "@/components/Leaderboard";
+import { RouteGraph, type GraphPlayer } from "@/components/RouteGraph";
 
 type Me = Omit<Player, "token">;
 type Article = { title: string; displayTitle: string; html: string };
@@ -93,6 +94,14 @@ export function Play() {
 
   const room = view?.room;
   const playing = me?.status === "playing";
+
+  // Everyone whose route this viewer may see, with this player's own entry
+  // taken from the fresher play state rather than the polled leaderboard.
+  const graphPlayers = useMemo<GraphPlayer[]>(() => {
+    if (!me) return [];
+    const others = (view?.players ?? []).filter((p) => p.id !== me.id && p.path) as GraphPlayer[];
+    return [me, ...others];
+  }, [me, view]);
   const elapsed = me ? (me.finishedAt ?? now) - me.startedAt : 0;
 
   return (
@@ -149,6 +158,11 @@ export function Play() {
               <p className="text-sm text-muted">
                 Time {formatDuration(elapsed)} · Route: {me.path.join(" → ")}
               </p>
+              {room && (
+                <div className="mt-2">
+                  <RouteGraph players={graphPlayers} start={room.start} end={room.end} meId={me.id} />
+                </div>
+              )}
               <Link href={`/r/${roomId}`} className="btn-primary mt-2 self-start">
                 See full results
               </Link>
@@ -179,14 +193,9 @@ export function Play() {
         <aside className="flex flex-col gap-6 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-y-auto">
           <section className="flex flex-col gap-2">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Your route</h2>
-            <ol className="flex flex-col gap-1 text-sm">
-              {me?.path.map((t, i) => (
-                <li key={i} className="flex gap-2">
-                  <span className="w-5 shrink-0 text-right font-mono text-xs leading-5 text-muted">{i}</span>
-                  <span className={i === me.path.length - 1 ? "font-semibold" : ""}>{t}</span>
-                </li>
-              ))}
-            </ol>
+            {me && room && (
+              <RouteGraph players={[me]} start={room.start} end={room.end} meId={me.id} orientation="vertical" />
+            )}
           </section>
           <section className="flex flex-col gap-2">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Leaderboard</h2>
