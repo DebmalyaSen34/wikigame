@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { api, clearToken, getToken, useNow, useRoomView } from "@/lib/client";
 import { loadArticle, prefetchArticle, type Article } from "@/lib/articles";
-import { DIFFICULTIES, formatDuration, parText, type Player } from "@/lib/game";
+import { DIFFICULTIES, TIME_GRACE_MS, deadlineOf, formatDuration, parText, type Player } from "@/lib/game";
 import { Leaderboard } from "@/components/Leaderboard";
 import { RouteGraph, type GraphPlayer } from "@/components/RouteGraph";
 import { DifficultyBadge } from "@/components/DifficultyInfo";
@@ -125,7 +125,7 @@ function PlayRoom({ roomId }: { roomId: string }) {
     if (!link) return;
     e.preventDefault();
     const to = link.getAttribute("data-wiki");
-    if (!to || loading || me?.status !== "playing") return;
+    if (!to || loading || me?.status !== "playing" || timeUp) return;
     send("click", to);
   }
 
@@ -181,6 +181,29 @@ function PlayRoom({ roomId }: { roomId: string }) {
     return [me, ...others];
   }, [me, view]);
   const elapsed = me ? (me.finishedAt ?? now) - me.startedAt : 0;
+  // With a time limit: time left this round (can go slightly negative before the server confirms).
+  const deadline = me && room ? deadlineOf(room, me) : null;
+  const left = deadline !== null ? deadline - now : null;
+  const timeUp = playing && left !== null && left <= 0;
+
+  // Time's up: ask the server once it's past the grace period, so it marks this
+  // player out of time and the page shows the result.
+  const expired = playing && left !== null && left < -TIME_GRACE_MS;
+  useEffect(() => {
+    if (!expired) return;
+    let cancelled = false;
+    run("state").then(
+      (r) => {
+        if (cancelled) return;
+        apply(r);
+        refresh();
+      },
+      (e) => !cancelled && fail(e),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [expired, run, apply, fail, refresh]);
   const myRank = view && me ? view.players.findIndex((p) => p.id === me.id) + 1 : 0;
 
   const sidebar = (
@@ -232,9 +255,21 @@ function PlayRoom({ roomId }: { roomId: string }) {
           <div className="order-2 ml-auto flex items-center gap-3 font-mono text-sm tabular-nums sm:order-3 sm:ml-0">
             <span>
               <strong className="text-base">{me?.clicks ?? 0}</strong>{" "}
-              <span className="text-muted">{me?.clicks === 1 ? "click" : "clicks"}</span>
+              {/* Shortened on phones so the stats and buttons share one row. */}
+              <span className="text-muted sm:hidden">clk</span>
+              <span className="hidden text-muted sm:inline">{me?.clicks === 1 ? "click" : "clicks"}</span>
             </span>
-            <span className="text-muted">{formatDuration(elapsed)}</span>
+            {playing && left !== null ? (
+              <span className={left < 30_000 ? "font-semibold text-danger" : "text-muted"} title="Time left this round">
+                <span className="sm:hidden" aria-hidden>
+                  ⏱
+                </span>
+                {formatDuration(Math.max(0, left))}
+                <span className="hidden sm:inline"> left</span>
+              </span>
+            ) : (
+              <span className="text-muted">{formatDuration(elapsed)}</span>
+            )}
           </div>
 
           {/* Phones: shares the target row, so the stats and buttons still fit on one row. */}
@@ -302,7 +337,9 @@ function PlayRoom({ roomId }: { roomId: string }) {
                 )}
                 {me.status === "finished"
                   ? `You made it in ${me.clicks} click${me.clicks === 1 ? "" : "s"}!`
-                  : "You gave up this round."}
+                  : me.status === "timeout"
+                    ? "Time's up! You didn't reach the target in time."
+                    : "You gave up this round."}
               </p>
               <p className="text-sm text-muted">
                 Time {formatDuration(elapsed)} · Route: {me.path.join(" → ")}
@@ -331,6 +368,12 @@ function PlayRoom({ roomId }: { roomId: string }) {
 
           {error && (
             <p className="mb-4 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>
+          )}
+
+          {timeUp && (
+            <p className="mb-4 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+              Time&apos;s up for this round.
+            </p>
           )}
 
           {playing && rules.hints && (

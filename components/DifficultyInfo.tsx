@@ -1,4 +1,4 @@
-import { DIFFICULTIES, parText, type Room } from "@/lib/game";
+import { DIFFICULTIES, formatLimit, parText, type Room } from "@/lib/game";
 
 const TONE = {
   easy: "border-success/50 bg-success/10 text-success",
@@ -31,6 +31,7 @@ export function DifficultyInfo({ room, revealRoute }: { room: Room; revealRoute:
         {d.rules.map((r) => (
           <li key={r}>{r}</li>
         ))}
+        {room.timeLimitSec ? <li>Time limit: {formatLimit(room.timeLimitSec)} per round, from when you start</li> : null}
         {par && (
           <li>
             {par}

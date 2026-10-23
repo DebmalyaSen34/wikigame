@@ -8,7 +8,7 @@ import { Leaderboard } from "@/components/Leaderboard";
 import { PageCard } from "@/components/PageCard";
 import { DifficultyInfo } from "@/components/DifficultyInfo";
 import { RouteGraph, type GraphPlayer } from "@/components/RouteGraph";
-import { DIFFICULTIES } from "@/lib/game";
+import { DIFFICULTIES, formatLimit } from "@/lib/game";
 import { roomShareUrl } from "@/lib/site";
 import { Spinner } from "@/components/Spinner";
 import { NextRound } from "@/components/NextRound";
@@ -164,7 +164,10 @@ function LobbyRoom({ roomId }: { roomId: string }) {
       ) : (
         <form onSubmit={join} className="flex flex-col gap-3 rounded-2xl border border-border bg-surface p-5">
           <h2 className="font-semibold">Ready?</h2>
-          <p className="text-sm text-muted">The clock starts as soon as you press Start.</p>
+          <p className="text-sm text-muted">
+            The clock starts as soon as you press Start
+            {room.timeLimitSec ? `, and you'll have ${formatLimit(room.timeLimitSec)}` : ""}.
+          </p>
           <div className="flex gap-2">
             <input
               value={name}

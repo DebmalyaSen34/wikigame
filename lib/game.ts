@@ -59,6 +59,7 @@ export type Room = {
   seriesId?: string; // id of the game's first round; shared by all its rounds
   totalRounds?: number; // rounds in this game; missing on older rooms (= endless rounds)
   endedAt?: number; // set on the last round once the game is over
+  timeLimitSec?: number; // optional time per round, per player (from when they join); missing = no limit
   start: string;
   end: string;
   startInfo: PageInfo;
@@ -67,7 +68,7 @@ export type Room = {
   createdBy: string;
 };
 
-export type PlayerStatus = "playing" | "finished" | "gaveup";
+export type PlayerStatus = "playing" | "finished" | "gaveup" | "timeout";
 
 export type Player = {
   id: string; // public id, shown to other players
@@ -115,7 +116,7 @@ export function makeRoomCode(): string {
 export function rankPlayers<T extends Pick<Player, "status" | "clicks" | "startedAt" | "finishedAt">>(
   players: T[],
 ): T[] {
-  const order = { finished: 0, playing: 1, gaveup: 2 } as const;
+  const order = { finished: 0, playing: 1, timeout: 2, gaveup: 3 } as const;
   return [...players].sort((a, b) => {
     if (a.status !== b.status) return order[a.status] - order[b.status];
     if (a.clicks !== b.clicks) return a.clicks - b.clicks;
@@ -141,4 +142,29 @@ export function formatDuration(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000));
   const m = Math.floor(s / 60);
   return `${m}:${String(s % 60).padStart(2, "0")}`;
+}
+
+// Optional time per round. 0 = no limit.
+export const TIME_LIMIT_OPTIONS = [0, 60, 120, 180, 300, 600];
+// A click sent just before the deadline may arrive just after it.
+export const TIME_GRACE_MS = 2000;
+
+export function formatLimit(sec: number | undefined): string {
+  return sec ? `${sec / 60} min` : "No limit";
+}
+
+// When this player's time runs out, or null without a limit.
+export function deadlineOf(room: Pick<Room, "timeLimitSec">, player: Pick<Player, "startedAt">): number | null {
+  return room.timeLimitSec ? player.startedAt + room.timeLimitSec * 1000 : null;
+}
+
+export function isOutOfTime(room: Pick<Room, "timeLimitSec">, player: Pick<Player, "startedAt" | "status">, now = Date.now()) {
+  const deadline = deadlineOf(room, player);
+  return player.status === "playing" && deadline !== null && now > deadline + TIME_GRACE_MS;
+}
+
+// Marks a player whose time ran out. Their "finish" time is the deadline, so
+// the leaderboard shows the full limit as their time.
+export function expire(room: Pick<Room, "timeLimitSec">, player: Player): Player {
+  return { ...player, status: "timeout", finishedAt: deadlineOf(room, player) ?? Date.now() };
 }

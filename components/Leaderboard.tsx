@@ -3,7 +3,7 @@
 import { formatDuration, type PublicPlayer } from "@/lib/game";
 import { useNow } from "@/lib/client";
 
-const STATUS_LABEL = { finished: "Finished", playing: "Playing", gaveup: "Gave up" } as const;
+const STATUS_LABEL = { finished: "Finished", playing: "Playing", gaveup: "Gave up", timeout: "Out of time" } as const;
 
 export function Leaderboard({
   players,
@@ -43,7 +43,7 @@ export function Leaderboard({
                 </span>
                 <span
                   className={`text-xs ${
-                    p.status === "finished" ? "text-success" : p.status === "gaveup" ? "text-danger" : "text-muted"
+                    p.status === "finished" ? "text-success" : p.status === "playing" ? "text-muted" : "text-danger"
                   }`}
                 >
                   {STATUS_LABEL[p.status]}

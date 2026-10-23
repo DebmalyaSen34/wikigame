@@ -1,4 +1,4 @@
-import { DIFFICULTIES } from "@/lib/game";
+import { DIFFICULTIES, expire, isOutOfTime } from "@/lib/game";
 import { incomingLinks } from "@/lib/distance";
 import { store } from "@/lib/store";
 import { getArticle, normalizeTitle } from "@/lib/wiki";
@@ -20,10 +20,19 @@ export const POST = withErrors(async function POST(req: Request, ctx: RouteConte
   const body = await req.json().catch(() => ({}));
   const room = await store.getRoom(id.toUpperCase());
   if (!room) return Response.json({ error: "Room not found" }, { status: 404 });
-  const player = body.token ? await store.getPlayer(room.id, String(body.token)) : null;
+  let player = body.token ? await store.getPlayer(room.id, String(body.token)) : null;
   if (!player) return Response.json({ error: "You haven't joined this room" }, { status: 403 });
 
-  const action = String(body.action ?? "state");
+  let action = String(body.action ?? "state");
+  // Out of time: the round is over for this player, whatever they tried to do.
+  if (isOutOfTime(room, player)) {
+    player = expire(room, player);
+    await store.savePlayer(room.id, player);
+    action = "state";
+    after(async () => {
+      if (await everyoneDone(room.id)) await startNextRound(room.id);
+    });
+  }
   const rules = DIFFICULTIES[room.difficulty ?? "normal"];
   if (action !== "state" && player.status !== "playing") {
     return Response.json({ error: "Your game is already over" }, { status: 409 });

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, getSavedName, saveName, useBrowserValue } from "@/lib/client";
-import { DIFFICULTIES, type Difficulty } from "@/lib/game";
+import { DIFFICULTIES, TIME_LIMIT_OPTIONS, formatLimit, type Difficulty } from "@/lib/game";
 import { DEFAULT_ROUNDS, ROUND_OPTIONS } from "@/lib/scoring";
 import { Spinner } from "@/components/Spinner";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -17,6 +17,7 @@ export default function Home() {
   const [end, setEnd] = useState("");
   const [difficulty, setDifficulty] = useState<Difficulty>("normal");
   const [rounds, setRounds] = useState(DEFAULT_ROUNDS);
+  const [timeLimitSec, setTimeLimitSec] = useState(0);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [rolling, setRolling] = useState<"start" | "end" | null>(null);
@@ -44,7 +45,7 @@ export default function Home() {
     setError(null);
     saveName(name.trim());
     try {
-      const { id } = await api<{ id: string }>("/api/rooms", { json: { name, difficulty, rounds, start, end } });
+      const { id } = await api<{ id: string }>("/api/rooms", { json: { name, difficulty, rounds, timeLimitSec, start, end } });
       router.push(`/r/${id}`);
     } catch (e) {
       setError((e as Error).message);
@@ -127,6 +128,30 @@ export default function Home() {
           <p className="text-sm text-muted">
             {rounds === 1 ? "A single round." : `${rounds} rounds.`} Points for each finish, and the most points wins the
             game.
+          </p>
+        </fieldset>
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className="mb-1.5 text-sm font-medium">Time per round</legend>
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6" role="radiogroup">
+            {TIME_LIMIT_OPTIONS.map((sec) => (
+              <button
+                key={sec}
+                type="button"
+                role="radio"
+                aria-checked={timeLimitSec === sec}
+                onClick={() => setTimeLimitSec(sec)}
+                className={`h-10 rounded-lg border text-sm font-medium transition-colors ${
+                  timeLimitSec === sec ? "border-accent bg-accent text-accent-ink" : "border-border hover:bg-border/40"
+                }`}
+              >
+                {sec ? formatLimit(sec) : "None"}
+              </button>
+            ))}
+          </div>
+          <p className="text-sm text-muted">
+            {timeLimitSec
+              ? `Each player gets ${formatLimit(timeLimitSec)} per round from when they start. Out of time scores 0.`
+              : "Optional. Without a limit, a round lasts until everyone finishes or gives up."}
           </p>
         </fieldset>
         <Field label="From">

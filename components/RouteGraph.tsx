@@ -411,7 +411,13 @@ export function RouteGraph({
                     <span className="text-muted">
                       {" "}
                       · {p.clicks} click{p.clicks === 1 ? "" : "s"}
-                      {p.status === "finished" ? " · finished" : p.status === "gaveup" ? " · gave up" : " · still playing"}
+                      {p.status === "finished"
+                        ? " · finished"
+                        : p.status === "gaveup"
+                          ? " · gave up"
+                          : p.status === "timeout"
+                            ? " · out of time"
+                            : " · still playing"}
                     </span>
                     {me && p.id !== meId && <span className="block text-xs text-muted">{compare(me, p)}</span>}
                   </span>

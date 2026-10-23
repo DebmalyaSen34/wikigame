@@ -1,6 +1,6 @@
 // Server-only: creating rooms, and chaining rounds so a group can keep playing.
 
-import { makeRoomCode, type Difficulty, type Player, type Room } from "./game";
+import { isOutOfTime, makeRoomCode, type Difficulty, type Player, type Room } from "./game";
 import { scoreRound, standings, winners, type RoundScore, type Standing } from "./scoring";
 import { store } from "./store";
 import { generatePair, measure } from "./distance";
@@ -19,6 +19,7 @@ type NewRoom = {
   avoid?: string[]; // pages this group already played; see generatePair
   seriesId?: string; // set for rounds 2+ of a game
   totalRounds?: number;
+  timeLimitSec?: number;
 };
 
 // With both pages blank, picks a pair that matches the difficulty and records
@@ -63,6 +64,7 @@ export async function createRoom(input: NewRoom): Promise<Room> {
     usedPages: [...usedBefore, start, end],
     seriesId: input.seriesId ?? id,
     totalRounds: input.totalRounds,
+    timeLimitSec: input.timeLimitSec || undefined,
     start,
     end,
     startInfo,
@@ -83,9 +85,12 @@ export async function endGame(roomId: string): Promise<void> {
   if (room && !room.endedAt) await store.saveRoom({ ...room, endedAt: Date.now() });
 }
 
+// Done = finished, gave up, or out of time (even if not yet marked as such).
 export async function everyoneDone(roomId: string): Promise<boolean> {
-  const players = await store.listPlayers(roomId);
-  return players.length > 0 && players.every((p) => p.status !== "playing");
+  const [room, players] = await Promise.all([store.getRoom(roomId), store.listPlayers(roomId)]);
+  return (
+    !!room && players.length > 0 && players.every((p) => p.status !== "playing" || isOutOfTime(room, p))
+  );
 }
 
 // Creates the next round (same difficulty, fresh random pages) and links it
@@ -115,6 +120,7 @@ export async function startNextRound(roomId: string): Promise<string | null> {
       avoid: room.usedPages ?? [room.start, room.end],
       seriesId: room.seriesId ?? room.id,
       totalRounds: room.totalRounds,
+      timeLimitSec: room.timeLimitSec,
     });
     await store.saveRoom({ ...(fresh ?? room), nextRoomId: next.id });
     return next.id;
@@ -140,6 +146,7 @@ export async function startRematch(roomId: string, createdBy: string): Promise<s
       createdBy,
       round: 1,
       totalRounds: room.totalRounds,
+      timeLimitSec: room.timeLimitSec,
       prevRoomId: room.id,
       avoid: room.usedPages ?? [room.start, room.end],
     });

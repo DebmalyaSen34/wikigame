@@ -1,18 +1,20 @@
-import { DIFFICULTIES, type Difficulty } from "@/lib/game";
+import { DIFFICULTIES, TIME_LIMIT_OPTIONS, type Difficulty } from "@/lib/game";
 import { DEFAULT_ROUNDS, ROUND_OPTIONS } from "@/lib/scoring";
 import { createRoom, RoomInputError } from "@/lib/rooms";
 import { withErrors } from "@/lib/api";
 import { StoreNotConfiguredError } from "@/lib/store";
 
-// POST /api/rooms { name, difficulty?, rounds?, start?, end? } -> { id }
+// POST /api/rooms { name, difficulty?, rounds?, timeLimitSec?, start?, end? } -> { id }
 export const POST = withErrors(async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const difficulty: Difficulty = body.difficulty in DIFFICULTIES ? body.difficulty : "normal";
   const totalRounds = ROUND_OPTIONS.includes(Number(body.rounds)) ? Number(body.rounds) : DEFAULT_ROUNDS;
+  const timeLimitSec = TIME_LIMIT_OPTIONS.includes(Number(body.timeLimitSec)) ? Number(body.timeLimitSec) : 0;
   try {
     const room = await createRoom({
       difficulty,
       totalRounds,
+      timeLimitSec,
       createdBy: String(body.name ?? "").trim().slice(0, 24) || "Someone",
       start: String(body.start ?? ""),
       end: String(body.end ?? ""),
