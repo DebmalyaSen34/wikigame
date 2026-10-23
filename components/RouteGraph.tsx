@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { PlayerStatus } from "@/lib/game";
 
 // Draws every player's route as one merged graph: each page appears once, and
@@ -28,14 +28,33 @@ export function playerColorMap(players: { id: string; startedAt: number }[]) {
 
 type Orientation = "horizontal" | "vertical";
 
-type LaidNode = { title: string; layer: number; index: number; cx: number; cy: number; visitors: string[] };
-type LaidEdge = { from: string; to: string; players: string[] };
-
-const SIZES = {
-  horizontal: { nodeW: 140, nodeH: 34, layerGap: 170, crossGap: 58, pad: 20 },
-  vertical: { nodeW: 132, nodeH: 32, layerGap: 66, crossGap: 146, pad: 16 },
+type Point = { along: number; across: number }; // along = direction of travel, across = within a column
+type LaidNode = { title: string; layer: number; cx: number; cy: number; visitors: string[] };
+type LaidEdge = {
+  from: string;
+  to: string;
+  players: string[];
+  waypoints: Point[]; // an empty slot reserved in every column the edge passes through
 };
 
+const SIZES = {
+  horizontal: { nodeW: 140, nodeH: 34, layerGap: 176, crossGap: 54, pad: 20 },
+  // Two pages side by side fit the 300px game sidebar without scrolling.
+  vertical: { nodeW: 122, nodeH: 32, layerGap: 72, crossGap: 136, pad: 12 },
+};
+
+// Half a node's size along the direction of travel, and across it.
+function halves(orientation: Orientation) {
+  const S = SIZES[orientation];
+  return orientation === "horizontal"
+    ? { hA: S.nodeW / 2, hC: S.nodeH / 2 }
+    : { hA: S.nodeH / 2, hC: S.nodeW / 2 };
+}
+
+// Layered layout (the usual approach for flow graphs): pages go in columns by
+// click distance from the start, and every line only travels through the gaps
+// between columns. A line that skips columns gets an empty slot reserved in
+// each column it crosses, so no line ever runs over a page.
 function buildLayout(players: GraphPlayer[], start: string, end: string, orientation: Orientation) {
   const edges = new Map<string, LaidEdge>();
   const adj = new Map<string, Set<string>>();
@@ -62,7 +81,7 @@ function buildLayout(players: GraphPlayer[], start: string, end: string, orienta
       visit(to, p.id);
       if (backs.has(i)) continue; // Back moves retrace an existing line, so they aren't drawn
       const key = `${from}\u0000${to}`;
-      const edge = edges.get(key) ?? { from, to, players: [] };
+      const edge = edges.get(key) ?? { from, to, players: [], waypoints: [] };
       if (!edge.players.includes(p.id)) edge.players.push(p.id);
       edges.set(key, edge);
       if (!adj.has(from)) adj.set(from, new Set());
@@ -74,7 +93,7 @@ function buildLayout(players: GraphPlayer[], start: string, end: string, orienta
     seen.push(end);
   }
 
-  // Layer = fewest clicks from the start over anyone's route.
+  // Column = fewest clicks from the start over anyone's route.
   const layer = new Map<string, number>([[start, 0]]);
   const queue = [start];
   while (queue.length) {
@@ -92,90 +111,140 @@ function buildLayout(players: GraphPlayer[], start: string, end: string, orienta
     if (!layer.has(t)) layer.set(t, 1);
     maxLayer = Math.max(maxLayer, layer.get(t)!);
   }
-  // The target always sits alone at the far end, so every finished route converges on it.
+  // The target always sits alone in the last column, so every finished route converges on it.
   layer.set(end, maxLayer + 1);
 
   const layers: string[][] = Array.from({ length: maxLayer + 2 }, () => []);
   for (const t of seen) layers[layer.get(t)!].push(t);
 
-  // Order each layer by the average position of its parents, to untangle lines.
+  // Reserve slots for lines that skip columns, and remember which items
+  // connect between neighbouring columns (used to order each column).
+  const chains = new Map<string, string[]>();
+  const parents = new Map<string, string[]>();
+  const link = (u: string, v: string, lu: number, lv: number) => {
+    const [lo, hi] = lu < lv ? [u, v] : [v, u];
+    if (Math.abs(lu - lv) === 1) parents.set(hi, [...(parents.get(hi) ?? []), lo]);
+  };
+  const layerOf = (id: string) => layer.get(id)!;
+  for (const [key, e] of edges) {
+    const la = layerOf(e.from);
+    const lb = layerOf(e.to);
+    const step = lb > la ? 1 : -1;
+    const chain = [e.from];
+    for (let l = la + step; step * (lb - l) > 0; l += step) {
+      const id = `\u0001${key}\u0001${l}`;
+      layers[l].push(id);
+      layer.set(id, l);
+      chain.push(id);
+    }
+    chain.push(e.to);
+    chains.set(key, chain);
+    for (let i = 1; i < chain.length; i++) link(chain[i - 1], chain[i], layerOf(chain[i - 1]), layerOf(chain[i]));
+  }
+
+  // Order each column by the average position of what feeds into it, to untangle lines.
   const position = new Map<string, number>();
   layers[0].forEach((t, i) => position.set(t, i));
-  const parents = new Map<string, string[]>();
-  for (const e of edges.values()) {
-    if (layer.get(e.from)! < layer.get(e.to)!) parents.set(e.to, [...(parents.get(e.to) ?? []), e.from]);
-  }
   for (let l = 1; l < layers.length; l++) {
     const score = (t: string, i: number) => {
       const ps = parents.get(t);
-      return ps?.length ? ps.reduce((s, p) => s + (position.get(p) ?? 0), 0) / ps.length : i;
+      return ps?.length ? ps.reduce((sum, p) => sum + (position.get(p) ?? 0), 0) / ps.length : i;
     };
-    const scored = layers[l].map((t, i) => ({ t, s: score(t, i) }));
-    scored.sort((a, b) => a.s - b.s);
-    layers[l] = scored.map((x) => x.t);
+    layers[l] = layers[l]
+      .map((t, i) => ({ t, s: score(t, i) }))
+      .sort((x, y) => x.s - y.s)
+      .map((x) => x.t);
     layers[l].forEach((t, i) => position.set(t, i));
   }
 
   const S = SIZES[orientation];
+  const { hA, hC } = halves(orientation);
   const widest = Math.max(...layers.map((l) => l.length));
-  const nodes = new Map<string, LaidNode>();
-  layers.forEach((titles, l) => {
-    titles.forEach((title, i) => {
-      const along = S.pad + l * S.layerGap + (orientation === "horizontal" ? S.nodeW / 2 : S.nodeH / 2);
-      const across =
-        S.pad +
-        (i + (widest - titles.length) / 2) * S.crossGap +
-        (orientation === "horizontal" ? S.nodeH / 2 : S.nodeW / 2);
-      nodes.set(title, {
-        title,
-        layer: l,
-        index: i,
-        cx: orientation === "horizontal" ? along : across,
-        cy: orientation === "horizontal" ? across : along,
-        visitors: visitors.get(title)!,
+  const points = new Map<string, Point>();
+  layers.forEach((ids, l) => {
+    ids.forEach((id, i) => {
+      points.set(id, {
+        along: S.pad + l * S.layerGap + hA,
+        across: S.pad + (i + (widest - ids.length) / 2) * S.crossGap + hC,
       });
     });
   });
 
-  const alongSize = S.pad * 2 + (layers.length - 1) * S.layerGap + (orientation === "horizontal" ? S.nodeW : S.nodeH);
-  const acrossSize = S.pad * 2 + (widest - 1) * S.crossGap + (orientation === "horizontal" ? S.nodeH : S.nodeW);
-  // Extra room for lines that loop back to an earlier page.
-  const loopRoom = [...edges.values()].some((e) => layer.get(e.to)! <= layer.get(e.from)!) ? 50 : 0;
+  const nodes = new Map<string, LaidNode>();
+  for (const title of seen) {
+    const pt = points.get(title)!;
+    nodes.set(title, {
+      title,
+      layer: layer.get(title)!,
+      cx: orientation === "horizontal" ? pt.along : pt.across,
+      cy: orientation === "horizontal" ? pt.across : pt.along,
+      visitors: visitors.get(title)!,
+    });
+  }
+  for (const [key, e] of edges) e.waypoints = chains.get(key)!.slice(1, -1).map((id) => points.get(id)!);
 
+  const alongSize = S.pad * 2 + (layers.length - 1) * S.layerGap + hA * 2;
+  const acrossSize = S.pad * 2 + (widest - 1) * S.crossGap + hC * 2;
   return {
     nodes,
     edges: [...edges.values()],
-    width: orientation === "horizontal" ? alongSize : acrossSize + loopRoom,
-    height: orientation === "horizontal" ? acrossSize + loopRoom : alongSize,
-    offsetY: orientation === "horizontal" ? loopRoom : 0,
+    width: orientation === "horizontal" ? alongSize : acrossSize,
+    height: orientation === "horizontal" ? acrossSize : alongSize,
   };
 }
 
-function edgePath(a: LaidNode, b: LaidNode, off: number, orientation: Orientation) {
+// Every line stops in a gap before the page it enters: the coloured lines end
+// ARROW_GAP away, and one small neutral chevron sits in that gap with its tip
+// TIP_GAP from the pill, so nothing ever touches a pill's border.
+const TIP_GAP = 3;
+const ARROW_LEN = 7;
+const ARROW_GAP = TIP_GAP + ARROW_LEN + 2;
+const START_GAP = 3;
+
+// `off` spreads the parallel lines of different players apart.
+function edgeShape(e: LaidEdge, nodes: Map<string, LaidNode>, off: number, orientation: Orientation) {
   const S = SIZES[orientation];
-  if (orientation === "horizontal") {
-    if (b.layer > a.layer) {
-      const x1 = a.cx + S.nodeW / 2, y1 = a.cy + off;
-      const x2 = b.cx - S.nodeW / 2 - 6, y2 = b.cy + off;
-      const h = Math.max(40, (x2 - x1) / 2);
-      return `M ${x1} ${y1} C ${x1 + h} ${y1}, ${x2 - h} ${y2}, ${x2} ${y2}`;
+  const { hA, hC } = halves(orientation);
+  const horizontal = orientation === "horizontal";
+  const a = nodes.get(e.from)!;
+  const b = nodes.get(e.to)!;
+  const along = (n: LaidNode) => (horizontal ? n.cx : n.cy);
+  const across = (n: LaidNode) => (horizontal ? n.cy : n.cx);
+  const xy = (p: Point) => (horizontal ? `${p.along} ${p.across}` : `${p.across} ${p.along}`);
+  // Lines going back to an earlier (or the same) column enter the page from its
+  // far side, a little off-centre so they don't meet the lines leaving it.
+  const backEntry = hC * 0.45;
+  const forward = b.layer > a.layer;
+  const dir = forward ? 1 : -1;
+
+  let d: string;
+  let tip: Point;
+  if (b.layer === a.layer) {
+    // Same column: loop out into the gap after the column and back in.
+    const channel = along(a) + S.layerGap / 2;
+    const p0 = { along: along(a) + hA + START_GAP, across: across(a) + off };
+    const p3 = { along: along(b) + hA + ARROW_GAP, across: across(b) + backEntry + off };
+    d = `M ${xy(p0)} C ${xy({ along: channel, across: p0.across })}, ${xy({ along: channel, across: p3.across })}, ${xy(p3)}`;
+    tip = { along: along(b) + hA + TIP_GAP, across: across(b) + backEntry };
+  } else {
+    const entry = forward ? 0 : backEntry;
+    const pts: Point[] = [
+      { along: along(a) + dir * (hA + START_GAP), across: across(a) + off },
+      ...e.waypoints.map((w) => ({ along: w.along, across: w.across + off })),
+      { along: along(b) - dir * (hA + ARROW_GAP), across: across(b) + entry + off },
+    ];
+    d = `M ${xy(pts[0])}`;
+    for (let i = 1; i < pts.length; i++) {
+      const p = pts[i - 1];
+      const q = pts[i];
+      const h = (q.along - p.along) / 2; // handles along the flow: each hop stays inside its gap
+      d += ` C ${xy({ along: p.along + h, across: p.across })}, ${xy({ along: q.along - h, across: q.across })}, ${xy(q)}`;
     }
-    // Clicking a link back to an earlier page: arc over the top.
-    const x1 = a.cx + off, y1 = a.cy - S.nodeH / 2;
-    const x2 = b.cx + off, y2 = b.cy - S.nodeH / 2 - 6;
-    const lift = 40 + Math.abs(x1 - x2) * 0.08;
-    return `M ${x1} ${y1} C ${x1} ${y1 - lift}, ${x2} ${y2 - lift}, ${x2} ${y2}`;
+    tip = { along: along(b) - dir * (hA + TIP_GAP), across: across(b) + entry };
   }
-  if (b.layer > a.layer) {
-    const x1 = a.cx + off, y1 = a.cy + S.nodeH / 2;
-    const x2 = b.cx + off, y2 = b.cy - S.nodeH / 2 - 6;
-    const h = Math.max(20, (y2 - y1) / 2);
-    return `M ${x1} ${y1} C ${x1} ${y1 + h}, ${x2} ${y2 - h}, ${x2} ${y2}`;
-  }
-  const x1 = a.cx + S.nodeW / 2, y1 = a.cy + off;
-  const x2 = b.cx + S.nodeW / 2 + 6, y2 = b.cy + off;
-  const out = 30 + Math.abs(y1 - y2) * 0.1;
-  return `M ${x1} ${y1} C ${x1 + out} ${y1}, ${x2 + out} ${y2}, ${x2} ${y2}`;
+  const angle = horizontal ? (forward ? 0 : 180) : forward ? 90 : -90;
+  const [x, y] = horizontal ? [tip.along, tip.across] : [tip.across, tip.along];
+  return { d, tip: { x, y, angle } };
 }
 
 function truncate(s: string, n: number) {
@@ -220,7 +289,6 @@ export function RouteGraph({
   meId?: string;
   orientation?: Orientation;
 }) {
-  const uid = useId().replace(/:/g, "");
   const [hovered, setHovered] = useState<string | null>(null);
   const [pinned, setPinned] = useState<string | null>(null);
   const focus = hovered ?? pinned;
@@ -240,46 +308,43 @@ export function RouteGraph({
     <div className="flex flex-col gap-3">
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <svg width={layout.width} height={layout.height} className="mx-auto block" role="img" aria-label="Route map">
-          <defs>
-            {PALETTE.map((c, i) => (
-              <marker
-                key={c}
-                id={`${uid}-arrow-${i}`}
-                viewBox="0 0 10 10"
-                refX="1"
-                refY="5"
-                markerWidth="5"
-                markerHeight="5"
-                orient="auto"
-              >
-                <path d="M 0 0 L 10 5 L 0 10 z" fill={c} />
-              </marker>
-            ))}
-          </defs>
-          <g transform={`translate(0 ${layout.offsetY})`}>
+          <g>
             {layout.edges.flatMap((e) => {
-              const a = layout.nodes.get(e.from)!;
-              const b = layout.nodes.get(e.to)!;
               const ordered = [...e.players].sort((x, y) => colors.get(x)! - colors.get(y)!);
-              return drawOrder(ordered).map((pid) => {
+              const lines = drawOrder(ordered).map((pid) => {
                 const k = ordered.indexOf(pid);
-                const off = (k - (ordered.length - 1) / 2) * 4.5;
-                const ci = colors.get(pid)!;
+                const off = (k - (ordered.length - 1) / 2) * 4;
                 const dim = focus !== null && focus !== pid;
                 return (
                   <path
                     key={`${e.from}-${e.to}-${pid}`}
-                    d={edgePath(a, b, off, orientation)}
+                    d={edgeShape(e, layout.nodes, off, orientation).d}
                     fill="none"
-                    stroke={PALETTE[ci]}
-                    strokeWidth={pid === meId || pid === focus ? 3 : 2}
+                    stroke={PALETTE[colors.get(pid)!]}
+                    strokeWidth={pid === meId || pid === focus ? 2.5 : 2}
                     strokeLinecap="round"
                     opacity={dim ? 0.12 : 0.9}
-                    markerEnd={`url(#${uid}-arrow-${ci})`}
                     className="transition-opacity"
                   />
                 );
               });
+              // One small neutral chevron per connection, however many players took it.
+              const { tip } = edgeShape(e, layout.nodes, 0, orientation);
+              const arrowDim = focus !== null && !e.players.includes(focus);
+              return [
+                ...lines,
+                <path
+                  key={`${e.from}-${e.to}-arrow`}
+                  d={`M ${-ARROW_LEN} -4 L 0 0 L ${-ARROW_LEN} 4`}
+                  transform={`translate(${tip.x} ${tip.y}) rotate(${tip.angle})`}
+                  fill="none"
+                  className="stroke-muted transition-opacity"
+                  strokeWidth={1.75}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity={arrowDim ? 0.2 : 1}
+                />,
+              ];
             })}
 
             {[...layout.nodes.values()].map((n) => {
